@@ -1,0 +1,3 @@
+.venv
+.git
+telegram_bot/.env
