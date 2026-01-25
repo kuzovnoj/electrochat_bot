@@ -20,7 +20,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = get_main_keyboard()
         await update.message.reply_text(
             "👋 Привет! Я бот для управления заявками.\n"
-            "Нажмите кнопку ниже, чтобы создать новую заявку.\n\n"
+            "Используйте меню команд или кнопку ниже, чтобы создать новую заявку.\n\n"
             "⚠️ *Внимание:* Заполнение заявки будет происходить в личном чате с ботом.",
             reply_markup=keyboard,
             parse_mode=ParseMode.MARKDOWN
@@ -29,10 +29,81 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # В личном чате - просто приветствуем
         await update.message.reply_text(
             "Привет! Я бот для управления заявками.\n\n"
-            "Теперь вы можете создать заявку. Вернитесь в группу и нажмите '📝 Подать заявку'.",
+            "Теперь вы можете создать заявку. Вернитесь в группу и используйте команду /new или нажмите '📝 Подать заявку'.",
             reply_markup=remove_keyboard()
         )
     return ConversationHandler.END
+
+async def new_application(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /new - создание заявки из меню"""
+    chat_type = update.message.chat.type
+    
+    if chat_type not in ['group', 'supergroup']:
+        await update.message.reply_text(
+            "Для создания заявки вернитесь в групповой чат и используйте команду /new там.",
+            reply_markup=remove_keyboard()
+        )
+        return ConversationHandler.END
+    
+    user_id = update.effective_user.id
+    username = update.effective_user.username or update.effective_user.full_name
+    
+    print(f"DEBUG: Команда /new от пользователя {user_id} ({username})")
+    
+    try:
+        # Сохраняем данные для начала процесса
+        user_states[user_id] = {
+            'step': 'address',
+            'username': username,
+            'group_message_id': update.message.message_id,
+            'group_chat_id': update.message.chat.id
+        }
+        
+        # Отправляем первый вопрос в личку
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=f"👋 {username}, давайте создадим заявку!\n\n"
+                 "📍 *Введите адрес:*\n"
+                 "(или отправьте '❌ Отмена' для отмены)",
+            reply_markup=get_cancel_keyboard(),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        print(f"DEBUG: Сообщение отправлено пользователю {user_id}")
+        
+        # Уведомляем в группе
+        await update.message.reply_text(
+            f"👤 {username} начал заполнение заявки.\n"
+            "Данные запрашиваются в личном чате с ботом."
+        )
+        
+        return Config.ADDRESS
+        
+    except Exception as e:
+        print(f"DEBUG: Ошибка при отправке сообщения: {e}")
+        
+        # Если не удалось отправить - пользователь не начинал диалог
+        keyboard = [[
+            InlineKeyboardButton(
+                "💬 Написать боту в личку", 
+                url=f"https://t.me/{context.bot.username}"
+            )
+        ]]
+        
+        await update.message.reply_text(
+            f"👋 {username},\n\n"
+            "Чтобы создать заявку:\n"
+            "1. Нажмите кнопку ниже\n"
+            "2. Напишите `/start` боту\n"
+            "3. Используйте команду /new снова",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        
+        # Очищаем состояние, если было создано
+        if user_id in user_states:
+            del user_states[user_id]
+        
+        return ConversationHandler.END
 
 async def create_application_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нажатия на кнопку 'Подать заявку' в группе"""
@@ -44,7 +115,6 @@ async def create_application_callback(update: Update, context: ContextTypes.DEFA
     
     print(f"DEBUG: Пользователь {user_id} ({username}) нажал кнопку")
     
-    # Упрощенная проверка: просто пытаемся отправить сообщение
     try:
         # Сохраняем данные для начала процесса
         user_states[user_id] = {
@@ -108,6 +178,7 @@ async def create_application_callback(update: Update, context: ContextTypes.DEFA
             del user_states[user_id]
         
         return ConversationHandler.END
+
 
 async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик всех сообщений в личном чате"""
