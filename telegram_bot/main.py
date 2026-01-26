@@ -1,6 +1,6 @@
 import logging
 from telegram import Update, BotCommand
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
 from config import Config
 import handlers
 from database import db
@@ -35,30 +35,39 @@ def main():
         return
     
     try:
-        # Создаем приложение - все в одной строке или с правильными отступами
+        # Создаем приложение
         application = (Application.builder()
             .token(Config.BOT_TOKEN)
             .pool_timeout(30)
             .connect_timeout(30)
             .read_timeout(30)
             .write_timeout(30)
-            .post_init(post_init)  # Добавляем post_init
+            .post_init(post_init)
             .build())
     except Exception as e:
         logger.error(f"✗ Ошибка: {e}")
         return
     
-    # Обработчик кнопки "Подать заявку"
-    application.add_handler(CallbackQueryHandler(
-        handlers.create_application_callback, 
-        pattern='^create_application$'
-    ))
+    # Создаем ConversationHandler для создания заявки
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("new", handlers.new_application),
+            CallbackQueryHandler(handlers.create_application_callback, pattern='^create_application$')
+        ],
+        states={
+            Config.ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_address)],
+            Config.PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_phone)],
+            Config.TASK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_task)],
+            Config.COMMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_comment)],
+        },
+        fallbacks=[
+            CommandHandler("cancel", handlers.handle_cancel),
+            MessageHandler(filters.Regex('^(❌ Отмена|cancel)$'), handlers.handle_cancel)
+        ],
+    )
     
-    # Обработчик ВСЕХ сообщений в личном чате
-    application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
-        handlers.handle_private_message
-    ))
+    # Добавляем ConversationHandler
+    application.add_handler(conv_handler)
     
     # Обработчик кнопки "Принять заявку"
     application.add_handler(CallbackQueryHandler(
@@ -66,9 +75,20 @@ def main():
         pattern='^accept_'
     ))
     
-    # Команды
+    # Обработчик кнопки "Сохранить контакт"
+    application.add_handler(CallbackQueryHandler(
+        handlers.save_contact_callback, 
+        pattern='^save_contact_'
+    ))
+    
+    # Обработчик кнопок копирования данных
+    application.add_handler(CallbackQueryHandler(
+        handlers.copy_data_callback, 
+        pattern='^copy_'
+    ))
+    
+    # Базовые команды
     application.add_handler(CommandHandler("start", handlers.start))
-    application.add_handler(CommandHandler("new", handlers.new_application))  # Новая команда
     application.add_handler(CommandHandler("help", handlers.help_command))
     application.add_handler(CommandHandler("cancel", handlers.handle_cancel))
     

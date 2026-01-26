@@ -3,7 +3,14 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMa
 def get_main_keyboard():
     """Клавиатура для группового чата"""
     keyboard = [
-        [InlineKeyboardButton("📝 Подать заявку", callback_data='create_application')],
+        [InlineKeyboardButton("ℹ️ Помощь", callback_data='show_help')]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_private_chat_keyboard():
+    """Клавиатура для личного чата"""
+    keyboard = [
+        [InlineKeyboardButton("📝 Создать заявку", callback_data='create_application')],
         [InlineKeyboardButton("ℹ️ Помощь", callback_data='show_help')]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -16,8 +23,7 @@ def get_cancel_keyboard():
 def get_application_keyboard(application_id):
     """Клавиатура для принятия заявки"""
     keyboard = [[
-        InlineKeyboardButton("Принять заявку", 
-                           callback_data=f'accept_{application_id}')
+        InlineKeyboardButton("✅ Принять заявку", callback_data=f'accept_{application_id}')
     ]]
     return InlineKeyboardMarkup(keyboard)
 
