@@ -19,7 +19,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_type in ['group', 'supergroup']:
         keyboard = get_main_keyboard()
         await update.message.reply_text(
-            "👋 Привет! Я бот для управления заявками.\n"
+            "Привет! Я бот для управления заявками.\n"
             "Используйте меню команд или кнопку ниже, чтобы создать новую заявку.\n\n"
             "⚠️ *Внимание:* Заполнение заявки будет происходить в личном чате с ботом.",
             reply_markup=keyboard,
@@ -62,21 +62,21 @@ async def new_application(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Отправляем первый вопрос в личку
         await context.bot.send_message(
             chat_id=user_id,
-            text=f"👋 {username}, давайте создадим заявку!\n\n"
-                 "📍 *Введите адрес:*\n"
+            text=f"Привет {username}, давайте создадим заявку!\n\n"
+                 "Введите адрес:\n"
                  "(или отправьте '❌ Отмена' для отмены)",
             reply_markup=get_cancel_keyboard(),
             parse_mode=ParseMode.MARKDOWN
         )
         
         print(f"DEBUG: Сообщение отправлено пользователю {user_id}")
-        
+        '''
         # Уведомляем в группе
         await update.message.reply_text(
             f"👤 {username} начал заполнение заявки.\n"
             "Данные запрашиваются в личном чате с ботом."
         )
-        
+        '''
         return Config.ADDRESS
         
     except Exception as e:
@@ -127,7 +127,7 @@ async def create_application_callback(update: Update, context: ContextTypes.DEFA
         # Отправляем первый вопрос в личку
         await context.bot.send_message(
             chat_id=user_id,
-            text=f"👋 {username}, давайте создадим заявку!\n\n"
+            text=f"Привет {username}, давайте создадим заявку!\n\n"
                  "📍 *Введите адрес:*\n"
                  "(или отправьте '❌ Отмена' для отмены)",
             reply_markup=get_cancel_keyboard(),
@@ -135,7 +135,7 @@ async def create_application_callback(update: Update, context: ContextTypes.DEFA
         )
         
         print(f"DEBUG: Сообщение отправлено пользователю {user_id}")
-        
+        '''
         # Уведомляем в группе
         await query.edit_message_reply_markup(reply_markup=None)
         await context.bot.send_message(
@@ -144,7 +144,7 @@ async def create_application_callback(update: Update, context: ContextTypes.DEFA
                  "Данные запрашиваются в личном чате с ботом.",
             reply_to_message_id=query.message.message_id
         )
-        
+        '''
         return Config.ADDRESS
         
     except Exception as e:
@@ -241,7 +241,7 @@ async def process_address(update: Update, context: ContextTypes.DEFAULT_TYPE, us
     user_data['step'] = 'phone'
     
     await update.message.reply_text(
-        "📱 *Введите номер телефона:*\n"
+        "Введите номер телефона:\n"
         "(или отправьте '❌ Отмена' для отмены)",
         reply_markup=get_cancel_keyboard(),
         parse_mode=ParseMode.MARKDOWN
@@ -281,7 +281,7 @@ async def process_task(update: Update, context: ContextTypes.DEFAULT_TYPE, user_
     user_data['step'] = 'comment'
     
     await update.message.reply_text(
-        "💬 *Введите комментарий (или отправьте '-' если комментария нет):*\n"
+        "Введите комментарий (или отправьте '-' если комментария нет):\n"
         "(или отправьте '❌ Отмена' для отмены)",
         reply_markup=get_cancel_keyboard(),
         parse_mode=ParseMode.MARKDOWN
@@ -330,12 +330,12 @@ async def process_comment(update: Update, context: ContextTypes.DEFAULT_TYPE, us
         
         # Подтверждение пользователю
         await update.message.reply_text(
-            f"✅ *Заявка #{app_id} успешно создана!*\n\n"
-            f"📋 *Данные заявки:*\n"
-            f"📍 *Адрес:* {application.address}\n"
-            f"📱 *Телефон:* {application.phone}\n"
-            f"📝 *Задача:* {application.task}\n"
-            f"💬 *Комментарий:* {application.comment or 'нет'}",
+            f"Заявка #{app_id} успешно создана!\n\n"
+            f"\n"
+            f"Адрес: {application.address}\n"
+            f"Телефон: {application.phone}\n"
+            f"Задача: {application.task}\n"
+            f"Комментарий: {application.comment or 'нет'}",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=remove_keyboard()
         )
@@ -343,10 +343,10 @@ async def process_comment(update: Update, context: ContextTypes.DEFAULT_TYPE, us
         # Отправляем заявку в общий чат
         keyboard = get_application_keyboard(app_id)
         message_text = (
-            f"📋 *Новая заявка #{app_id}*\n\n"
-            f"📍 *Адрес:* {application.address}\n"
-            f"📝 *Задача:* {application.task}\n"
-            f"👤 *От:* {application.username}"
+            f"Новая заявка #{app_id}\n\n"
+            f"Адрес: {application.address}\n"
+            f"Задача: {application.task}\n"
+            f"От: @{application.username}"
         )
         
         sent_message = await context.bot.send_message(
@@ -364,7 +364,7 @@ async def process_comment(update: Update, context: ContextTypes.DEFAULT_TYPE, us
             try:
                 await context.bot.send_message(
                     chat_id=group_chat_id,
-                    text=f"✅ {application.username} создал заявку #{app_id}."
+                    text=f"{application.username} создал заявку #{app_id}."
                 )
             except:
                 pass
@@ -433,24 +433,24 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
     
     if success:
         new_text = (
-            f"✅ *Заявка #{app_id} ПРИНЯТА*\n\n"
-            f"📍 *Адрес:* {application['address']}\n"
-            f"📝 *Задача:* {application['task']}\n"
-            f"👤 *От:* {application['username']}\n"
-            f"👷 *Принял:* {query.from_user.username or query.from_user.full_name}"
+            f"Заявка #{app_id} ПРИНЯТА\n\n"
+            f"Адрес: {application['address']}\n"
+            f"Задача: {application['task']}\n"
+            f"От: {application['username']}\n"
+            f"Принял: {query.from_user.username or query.from_user.full_name}"
         )
         
         await query.edit_message_text(text=new_text, parse_mode=ParseMode.MARKDOWN)
         
         # Отправляем данные в личку
         full_info = (
-            f"🎉 *Вы приняли заявку #{app_id}!*\n\n"
-            f"📋 *Данные заявки:*\n"
-            f"📍 *Адрес:* {application['address']}\n"
-            f"📞 *Телефон:* {application['phone']}\n"
-            f"📝 *Задача:* {application['task']}\n"
-            f"💬 *Комментарий:* {application['comment'] or 'нет'}\n"
-            f"👤 *Клиент:* {application['username']}"
+            f"Вы приняли заявку #{app_id}!\n\n"
+            f"Данные заявки:\n"
+            f"Адрес: {application['address']}\n"
+            f"Телефон: {application['phone']}\n"
+            f"Задача: {application['task']}\n"
+            f"Комментарий: {application['comment'] or 'нет'}\n"
+            f"Клиент: {application['username']}"
         )
         
         try:
@@ -469,7 +469,7 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
             try:
                 await context.bot.send_message(
                     chat_id=application['user_id'],
-                    text=f"📢 Ваша заявка #{app_id} принята!\n"
+                    text=f"Ваша заявка #{app_id} принята!\n"
                          f"Исполнитель: {query.from_user.username or query.from_user.full_name}"
                 )
             except:
@@ -480,13 +480,13 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда помощи"""
     help_text = (
-        "📋 *Помощь по использованию бота:*\n\n"
+        "Помощь по использованию бота:\n\n"
         "*В группе:*\n"
-        "• Нажмите '📝 Подать заявку' для создания новой заявки\n"
-        "• Нажмите '✅ Принять заявку' чтобы взять задание\n\n"
-        "*В личном чате:*\n"
-        "• Здесь вы заполняете данные заявки\n"
-        "• Используйте '❌ Отмена' для отмены\n\n"
+        "Нажмите 'Подать заявку' для создания новой заявки\n"
+        "Нажмите 'Принять заявку' чтобы взять задание\n\n"
+        "В личном чате:\n"
+        "Здесь вы заполняете данные заявки\n"
+        "Используйте '❌ Отмена' для отмены\n\n"
         "*Команды:*\n"
         "`/start` - начать работу\n"
         "`/help` - помощь\n"

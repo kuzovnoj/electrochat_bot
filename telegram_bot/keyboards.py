@@ -16,7 +16,7 @@ def get_cancel_keyboard():
 def get_application_keyboard(application_id):
     """Клавиатура для принятия заявки"""
     keyboard = [[
-        InlineKeyboardButton("✅ Принять заявку", 
+        InlineKeyboardButton("Принять заявку", 
                            callback_data=f'accept_{application_id}')
     ]]
     return InlineKeyboardMarkup(keyboard)
