@@ -1,5 +1,5 @@
 import logging
-from telegram import Update, BotCommand
+from telegram import Update, BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
 from config import Config
 import handlers
@@ -14,17 +14,28 @@ logger = logging.getLogger(__name__)
 
 async def post_init(application: Application):
     """Установка команд меню после инициализации бота"""
-    # Команды для меню
-    commands = [
-        BotCommand("start", "Начать работу"),
-        BotCommand("new", "Создать новую заявку"),
-        BotCommand("help", "Помощь по использованию бота"),
-        BotCommand("cancel", "Отмена текущего действия")
-    ]
-    
     try:
-        await application.bot.set_my_commands(commands)
-        logger.info("✓ Меню команд установлено")
+        # Команды только для личных чатов
+        private_commands = [
+            BotCommand("start", "Начать работу"),
+            BotCommand("new", "Создать новую заявку"),
+            BotCommand("help", "Помощь по использованию"),
+            BotCommand("cancel", "Отмена текущего действия")
+        ]
+        
+        await application.bot.set_my_commands(
+            commands=private_commands,
+            scope=BotCommandScopeAllPrivateChats()
+        )
+        logger.info("✓ Меню команд для личных чатов установлено")
+        
+        # Для групповых чатов устанавливаем пустой список команд
+        await application.bot.set_my_commands(
+            commands=[],  # Пустой список - не будет меню команд
+            scope=BotCommandScopeAllGroupChats()
+        )
+        logger.info("✓ Меню команд для групп очищено")
+        
     except Exception as e:
         logger.error(f"✗ Ошибка установки меню: {e}")
 
