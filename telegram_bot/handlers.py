@@ -13,15 +13,17 @@ logger = logging.getLogger(__name__)
 user_states = {}
 
 
-# Также обновим функцию start для поддержки параметров
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     chat_type = update.message.chat.type
     args = context.args  # Получаем аргументы команды
+    user_id = update.effective_user.id
     
     if chat_type == 'private':
-        # Проверяем, если есть параметр с номером заявки (app_123)
+        # Проверяем, если есть параметр с номером заявки (app_123) или токен (token_xxxx)
         app_data = None
+        token_data = None
+        
         if args and len(args) > 0:
             for arg in args:
                 if arg.startswith('app_'):
@@ -30,21 +32,119 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         break
                     except:
                         pass
+                elif arg.startswith('token_'):
+                    token_data = arg.split('_')[1]
+                    break
         
-        keyboard = [[InlineKeyboardButton("📝 Создать заявку", callback_data='create_application')]]
+        keyboard = [[InlineKeyboardButton("Создать заявку", callback_data='create_application')]]
         
         welcome_text = (
-            "👋 Привет! Я бот для управления заявками.\n\n"
+            "Привет! Я бот для управления заявками.\n\n"
             "В этом чате вы можете:\n"
-            "✅ Создать новую заявку\n"
-            "✅ Получить уведомления о статусе ваших заявок\n"
-            "✅ Получать данные принятых заявок\n\n"
+            "Создать новую заявку\n"
+            "Получить уведомления о статусе ваших заявок\n"
+            "Получать данные принятых заявок\n\n"
         )
         
-        # Если пользователь пришел по ссылке с заявкой
+        # Если пользователь пришел по токену
+        if token_data and 'app_tokens' in context.bot_data:
+            token_info = context.bot_data['app_tokens'].get(token_data)
+            
+            if token_info:
+                # Проверяем срок действия токена
+                import time
+                if time.time() > token_info['expires']:
+                    await update.message.reply_text(
+                        "❌ Срок действия ссылки истек.\n"
+                        "Пожалуйста, примите заявку заново в группе.",
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    # Удаляем просроченный токен
+                    del context.bot_data['app_tokens'][token_data]
+                    return ConversationHandler.END
+                
+                # Проверяем, что токен предназначен этому пользователю
+                if token_info['user_id'] != user_id:
+                    await update.message.reply_text(
+                        "❌ Эта ссылка предназначена другому пользователю.\n"
+                        "Только пользователь, принявший заявку, может получить данные.",
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    return ConversationHandler.END
+                
+                # Получаем данные заявки
+                app_data = token_info['app_id']
+                application = db.get_application(app_data)
+                
+                if application:
+                    # Проверяем, принял ли этот пользователь заявку
+                    is_accepted_by_user = db.check_application_owner(app_data, user_id)
+                    
+                    if not is_accepted_by_user:
+                        await update.message.reply_text(
+                            "❌ У вас нет доступа к данным этой заявки.",
+                            reply_markup=InlineKeyboardMarkup(keyboard),
+                            parse_mode=ParseMode.MARKDOWN
+                        )
+                        return ConversationHandler.END
+                    
+                    welcome_text += f"✅ Вы приняли заявку #{app_data}\n\n"
+                    
+                    await update.message.reply_text(
+                        welcome_text,
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    
+                    # Добавляем данные заявки
+                    full_info = (
+                        f"Данные заявки #{app_data}:\n\n"
+                        f"Адрес: {application['address']}\n"
+                        f"Телефон: {application['phone']}\n"
+                        f"Задача: {application['task']}\n"
+                        f"Комментарий: {application['comment'] or 'нет'}\n"
+                        f"Отправитель: @{application['username']}"
+                    )
+                    
+                    await update.message.reply_text(
+                        full_info,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    
+                    # Удаляем использованный токен
+                    del context.bot_data['app_tokens'][token_data]
+                
+                    # Добавляем кнопку для сохранения контакта
+                    contact_keyboard = [
+                        [InlineKeyboardButton("📝 Создать свою заявку", callback_data='create_application')],
+                        [InlineKeyboardButton("📞 Сохранить контакт", callback_data=f'save_contact_{app_data}')]
+                    ]
+                    '''
+                    await update.message.reply_text(
+                        "Что вы хотите сделать дальше?",
+                        reply_markup=InlineKeyboardMarkup(contact_keyboard)
+                    )
+                    '''
+                    return ConversationHandler.END
+        
+        # Если пользователь пришел по прямой ссылке с номером заявки
         if app_data:
             application = db.get_application(app_data)
             if application:
+                # Проверяем, принял ли этот пользователь заявку
+                is_accepted_by_user = db.check_application_owner(app_data, user_id)
+                
+                if not is_accepted_by_user:
+                    await update.message.reply_text(
+                        "❌ У вас нет доступа к данным этой заявки.\n"
+                        "Только пользователь, принявший заявку, может просматривать ее данные.",
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    return ConversationHandler.END
+                
                 welcome_text += f"✅ Вы приняли заявку #{app_data}\n\n"
                 
                 await update.message.reply_text(
@@ -55,12 +155,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 # Добавляем данные заявки
                 full_info = (
-                    f"📋 *Данные заявки #{app_data}:*\n\n"
-                    f"📍 *Адрес:* {application['address']}\n"
-                    f"📞 *Телефон:* {application['phone']}\n"
-                    f"🛠️ *Задача:* {application['task']}\n"
-                    f"📝 *Комментарий:* {application['comment'] or 'нет'}\n"
-                    f"👤 *Клиент:* {application['username']}"
+                    f"Данные заявки #{app_data}:\n\n"
+                    f"Адрес: {application['address']}\n"
+                    f"Телефон: {application['phone']}\n"
+                    f"Задача: {application['task']}\n"
+                    f"Комментарий: {application['comment'] or 'нет'}\n"
+                    f"Клиент: {application['username']}"
                 )
                 
                 await update.message.reply_text(
@@ -73,12 +173,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     [InlineKeyboardButton("📝 Создать свою заявку", callback_data='create_application')],
                     [InlineKeyboardButton("📞 Сохранить контакт", callback_data=f'save_contact_{app_data}')]
                 ]
-                
+                '''
                 await update.message.reply_text(
                     "Что вы хотите сделать дальше?",
                     reply_markup=InlineKeyboardMarkup(contact_keyboard)
                 )
-                
+                '''
                 return ConversationHandler.END
         
         # Стандартное приветствие
@@ -90,7 +190,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         # В групповом чате - просто приветствуем
         await update.message.reply_text(
-            "👋 Привет! Я бот для управления заявками.\n\n"
+            "Привет! Я бот для управления заявками.\n\n"
             "Здесь отображаются новые заявки, которые можно принять.\n"
             "Для создания заявки напишите мне в личные сообщения.",
             parse_mode=ParseMode.MARKDOWN
@@ -104,7 +204,7 @@ async def new_application(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if chat_type != 'private':
         await update.message.reply_text(
-            "❌ Для создания заявки напишите мне в личные сообщения (@ваш_бот).",
+            "❌ Для создания заявки напишите мне в личные сообщения (@Electrochat).",
             reply_markup=remove_keyboard()
         )
         return ConversationHandler.END
@@ -123,8 +223,8 @@ async def new_application(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Отправляем первый вопрос
     await update.message.reply_text(
-        f"📋 *Создание новой заявки*\n\n"
-        "📍 *Шаг 1 из 4:* Введите адрес:\n"
+        f"Создание новой заявки\n\n"
+        "Шаг 1 из 4: Введите адрес:\n"
         "(или отправьте '❌ Отмена' для отмены)",
         reply_markup=get_cancel_keyboard(),
         parse_mode=ParseMode.MARKDOWN
@@ -159,8 +259,8 @@ async def create_application_callback(update: Update, context: ContextTypes.DEFA
     
     # Отправляем первый вопрос
     await query.message.edit_text(
-        f"📋 *Создание новой заявки*\n\n"
-        "📍 *Шаг 1 из 4:* Введите адрес:\n"
+        f"Создание новой заявки\n\n"
+        "Шаг 1 из 4: Введите адрес:\n"
         "(или отправьте '❌ Отмена' для отмены)",
         parse_mode=ParseMode.MARKDOWN
     )
@@ -168,7 +268,7 @@ async def create_application_callback(update: Update, context: ContextTypes.DEFA
     # Отправляем новое сообщение с клавиатурой для ввода
     await context.bot.send_message(
         chat_id=user_id,
-        text="📍 Введите адрес выполнения работ:",
+        text="Введите адрес выполнения работ:",
         reply_markup=get_cancel_keyboard()
     )
     
@@ -196,7 +296,7 @@ async def handle_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_states[user_id]['step'] = 'phone'
     
     await update.message.reply_text(
-        "📞 *Шаг 2 из 4:* Введите номер телефона:\n"
+        "Шаг 2 из 4: Введите номер телефона:\n"
         "(формат: +7XXXXXXXXXX или 8XXXXXXXXXX)\n"
         "(или отправьте '❌ Отмена' для отмены)",
         reply_markup=get_cancel_keyboard(),
@@ -228,7 +328,7 @@ async def handle_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_states[user_id]['step'] = 'task'
     
     await update.message.reply_text(
-        "🛠️ *Шаг 3 из 4:* Опишите задачу:\n"
+        "Шаг 3 из 4: Опишите задачу:\n"
         "(подробно опишите, что нужно сделать)\n"
         "(или отправьте '❌ Отмена' для отмены)",
         reply_markup=get_cancel_keyboard(),
@@ -257,7 +357,7 @@ async def handle_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_states[user_id]['step'] = 'comment'
     
     await update.message.reply_text(
-        "📝 *Шаг 4 из 4:* Введите комментарий:\n"
+        "Шаг 4 из 4: Введите комментарий:\n"
         "(дополнительная информация, особенности и т.д.)\n"
         "(отправьте '-' если комментария нет)\n"
         "(или отправьте '❌ Отмена' для отмены)",
@@ -318,12 +418,12 @@ async def handle_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Подтверждение пользователю
         await update.message.reply_text(
-            f"✅ *Заявка #{app_id} успешно создана!*\n\n"
-            f"*Детали заявки:*\n"
-            f"📍 *Адрес:* {application.address}\n"
-            f"📞 *Телефон:* {application.phone}\n"
-            f"🛠️ *Задача:* {application.task}\n"
-            f"📝 *Комментарий:* {application.comment or 'нет'}\n\n"
+            f"Заявка #{app_id} успешно создана!\n\n"
+            f"Детали заявки:\n"
+            f"Адрес: {application.address}\n"
+            f"Телефон: {application.phone}\n"
+            f"Задача: {application.task}\n"
+            f"Комментарий: {application.comment or 'нет'}\n\n"
             f"Заявка отправлена в группу исполнителей.",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=remove_keyboard()
@@ -331,19 +431,19 @@ async def handle_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Создаем кнопку для новой заявки
         keyboard = [[InlineKeyboardButton("📝 Создать еще одну заявку", callback_data='create_application')]]
-        
+        '''
         await update.message.reply_text(
             "Что вы хотите сделать дальше?",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        
+        '''
         # Отправляем заявку в группу
         keyboard = get_application_keyboard(app_id)
         message_text = (
-            f"📋 *Новая заявка #{app_id}*\n\n"
-            f"📍 *Адрес:* {application.address}\n"
-            f"🛠️ *Задача:* {application.task}\n"
-            f"👤 *От:* @{application.username}"
+            f"Новая заявка #{app_id}\n\n"
+            f"Адрес: {application.address}\n"
+            f"Задача: {application.task}\n"
+            f"От: @{application.username}"
         )
         
         sent_message = await context.bot.send_message(
@@ -402,6 +502,7 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
     
     app_id = int(query.data.split('_')[1])
     application = db.get_application(app_id)
+    user_id = query.from_user.id
     
     if not application:
         await query.edit_message_text("❌ Заявка не найдена.")
@@ -409,24 +510,24 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
     
     success = db.accept_application(
         app_id, 
-        query.from_user.id,
+        user_id,
         query.from_user.username or query.from_user.full_name
     )
     
     if success:
         new_text = (
-            f"✅ *Заявка #{app_id} ПРИНЯТА*\n\n"
-            f"📍 *Адрес:* {application['address']}\n"
-            f"🛠️ *Задача:* {application['task']}\n"
-            f"👤 *От:* {application['username']}\n"
-            f"👷 *Принял:* {query.from_user.username or query.from_user.full_name}"
+            f"Заявка #{app_id} ПРИНЯТА\n\n"
+            f"Адрес: {application['address']}\n"
+            f"Задача: {application['task']}\n"
+            f"От: @{application['username']}\n"
+            f"Принял: @{query.from_user.username or query.from_user.full_name}"
         )
         
         await query.edit_message_text(text=new_text, parse_mode=ParseMode.MARKDOWN)
         
         # Пытаемся отправить данные в личку
         try:
-            # Создаем кнопку "Написать боту"
+            # Создаем кнопку "Написать боту" с пользовательским параметром
             start_button = InlineKeyboardButton(
                 "💬 Написать боту", 
                 url=f"https://t.me/{context.bot.username}?start=app_{app_id}"
@@ -434,18 +535,18 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
             keyboard = InlineKeyboardMarkup([[start_button]])
             
             full_info = (
-                f"✅ Вы приняли заявку #{app_id}!\n\n"
-                f"*Данные заявки:*\n"
-                f"📍 *Адрес:* {application['address']}\n"
-                f"📞 *Телефон:* {application['phone']}\n"
-                f"🛠️ *Задача:* {application['task']}\n"
-                f"📝 *Комментарий:* {application['comment'] or 'нет'}\n"
-                f"👤 *Клиент:* {application['username']}"
+                f"Вы приняли заявку #{app_id}!\n\n"
+                f"Данные заявки:\n"
+                f"Адрес: {application['address']}\n"
+                f"Телефон: {application['phone']}\n"
+                f"Задача: {application['task']}\n"
+                f"Комментарий: {application['comment'] or 'нет'}\n"
+                f"Отправитель: @{application['username']}"
             )
             
             # Пытаемся отправить сообщение в личку
             await context.bot.send_message(
-                chat_id=query.from_user.id,
+                chat_id=user_id,
                 text=full_info,
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=keyboard
@@ -453,7 +554,7 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
             
             # Сообщение в группу, что данные отправлены
             await query.message.reply_text(
-                f"👷 *{query.from_user.username or query.from_user.full_name}*, "
+                f"{query.from_user.username or query.from_user.full_name}, "
                 f"данные заявки #{app_id} отправлены вам в личные сообщения.",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_to_message_id=query.message.message_id
@@ -462,32 +563,60 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
         except Exception as e:
             print(f"DEBUG: Не удалось отправить в личку: {e}")
             
+            # Создаем ссылку с временным токеном или параметром пользователя
+            # Можно использовать простой хеш для проверки
+            import hashlib
+            import time
+            
+            # Создаем уникальный токен для этой заявки и пользователя
+            token_data = f"{app_id}_{user_id}_{int(time.time())}"
+            token_hash = hashlib.md5(token_data.encode()).hexdigest()[:8]
+            
+            # Сохраняем в контексте временную связку токен-пользователь-заявка
+            if 'app_tokens' not in context.bot_data:
+                context.bot_data['app_tokens'] = {}
+            
+            # Сохраняем на 1 час (3600 секунд)
+            context.bot_data['app_tokens'][token_hash] = {
+                'app_id': app_id,
+                'user_id': user_id,
+                'expires': time.time() + 3600
+            }
+            
             # Если не получилось - показываем кнопку для начала диалога
             start_button = InlineKeyboardButton(
-                "💬 Написать боту для получения данных", 
-                url=f"https://t.me/{context.bot.username}?start=app_{app_id}"
+                "💬 Получить данные заявки", 
+                url=f"https://t.me/{context.bot.username}?start=token_{token_hash}"
             )
             keyboard = InlineKeyboardMarkup([[start_button]])
             
-            await query.message.reply_text(
-                f"👷 *{query.from_user.username or query.from_user.full_name}*, "
+            reply_msg = await query.message.reply_text(
+                f"{query.from_user.username or query.from_user.full_name}, "
                 f"вы приняли заявку #{app_id}, но у вас нет диалога с ботом.\n\n"
-                f"📋 *Чтобы получить данные заявки:*\n"
+                f"Чтобы получить данные заявки:\n"
                 f"1. Нажмите кнопку ниже\n"
                 f"2. Напишите `/start` боту\n"
-                f"3. Данные заявки будут отправлены автоматически",
+                f"3. Данные заявки будут отправлены автоматически\n\n"
+                f"⚠️ *Внимание:* Эта ссылка действительна только для вас в течение 1 часа.",
                 reply_markup=keyboard,
                 parse_mode=ParseMode.MARKDOWN,
                 reply_to_message_id=query.message.message_id
             )
+            
+            # Сохраняем ID сообщения, чтобы можно было удалить его позже
+            context.bot_data[f'app_{app_id}_message'] = {
+                'message_id': reply_msg.message_id,
+                'chat_id': query.message.chat.id,
+                'user_id': user_id
+            }
         
         # Уведомляем создателя заявки
-        if query.from_user.id != application['user_id']:
+        if user_id != application['user_id']:
             try:
                 await context.bot.send_message(
                     chat_id=application['user_id'],
                     text=f"✅ Ваша заявка #{app_id} принята!\n"
-                         f"👷 *Исполнитель:* {query.from_user.username or query.from_user.full_name}\n\n"
+                         f"Исполнитель: @{query.from_user.username or query.from_user.full_name}\n\n"
                          f"Скоро с вами свяжутся для уточнения деталей."
                 )
             except Exception as e:
@@ -501,14 +630,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if chat_type == 'private':
         help_text = (
-            "🆘 *Помощь по использованию бота*\n\n"
-            "*В личном чате:*\n"
+            "Помощь по использованию бота\n\n"
+            "В личном чате:\n"
             "• Используйте команду `/new` или кнопку 'Создать заявку' для создания новой заявки\n"
             "• Вы получите уведомления о статусе ваших заявок\n\n"
-            "*В группе:*\n"
+            "В группе:\n"
             "• Отображаются новые заявки\n"
             "• Нажмите 'Принять заявку' чтобы взять задание\n\n"
-            "*Команды:*\n"
+            "Команды:\n"
             "`/start` - начать работу\n"
             "`/new` - создать новую заявку\n"
             "`/help` - помощь\n"
@@ -516,11 +645,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         help_text = (
-            "🆘 *Помощь по использованию бота*\n\n"
-            "*В этой группе:*\n"
+            "Помощь по использованию бота\n\n"
+            "В этой группе:\n"
             "• Отображаются новые заявки\n"
             "• Нажмите 'Принять заявку' чтобы взять задание\n\n"
-            "*Для создания заявки:*\n"
+            "Для создания заявки:\n"
             "Напишите боту в личные сообщения и используйте команду `/new`"
         )
     
@@ -547,21 +676,26 @@ async def save_contact_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text("❌ Ошибка: неверный ID заявки.")
         return
     
+    # Проверяем, имеет ли пользователь доступ к этой заявке
+    user_id = query.from_user.id
+    is_accepted_by_user = db.check_application_owner(app_id, user_id)
+    
+    if not is_accepted_by_user:
+        await query.answer("❌ У вас нет доступа к этой заявке", show_alert=True)
+        return
+    
     application = db.get_application(app_id)
     
     if not application:
         await query.edit_message_text("❌ Заявка не найдена.")
         return
     
-    # Здесь можно добавить логику сохранения контакта в БД
-    # Например, добавить таблицу contacts или просто показать данные
-    
     contact_info = (
-        f"📋 *Контактные данные заявки #{app_id}:*\n\n"
-        f"📍 *Адрес:* {application['address']}\n"
-        f"📞 *Телефон:* {application['phone']}\n"
-        f"🛠️ *Задача:* {application['task']}\n"
-        f"👤 *Клиент:* {application['username']}"
+        f"Контактные данные заявки #{app_id}:\n\n"
+        f"Адрес: {application['address']}\n"
+        f"Телефон: {application['phone']}\n"
+        f"Задача: {application['task']}\n"
+        f"Клиент: {application['username']}"
     )
     
     await query.message.edit_text(
@@ -594,6 +728,14 @@ async def copy_data_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     action = data[1]  # phone или address
     app_id = int(data[2])
     
+    # Проверяем, имеет ли пользователь доступ к этой заявке
+    user_id = query.from_user.id
+    is_accepted_by_user = db.check_application_owner(app_id, user_id)
+    
+    if not is_accepted_by_user:
+        await query.answer("❌ У вас нет доступа к этой заявке", show_alert=True)
+        return
+    
     application = db.get_application(app_id)
     
     if not application:
@@ -617,3 +759,29 @@ async def copy_data_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         message,
         parse_mode=ParseMode.MARKDOWN
     )
+
+async def handle_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка нажатия кнопки "Отмена" в процессе создания заявки"""
+    user_id = update.effective_user.id
+    text = update.message.text
+    
+    print(f"DEBUG: Кнопка отмены нажата пользователем {user_id}")
+    
+    # Очищаем состояние пользователя
+    if user_id in user_states:
+        del user_states[user_id]
+    
+    await update.message.reply_text(
+        "❌ Создание заявки отменено.",
+        reply_markup=remove_keyboard()
+    )
+    
+    # Создаем кнопку для новой заявки
+    keyboard = [[InlineKeyboardButton("📝 Создать заявку", callback_data='create_application')]]
+    
+    await update.message.reply_text(
+        "Можете создать новую заявку:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    
+    return ConversationHandler.END

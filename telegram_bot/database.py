@@ -75,4 +75,15 @@ class Database:
             cursor.execute("SELECT * FROM applications WHERE status = 'pending'")
             return cursor.fetchall()
 
+    def check_application_owner(self, app_id, user_id):
+        """Проверяет, принял ли пользователь заявку"""
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT accepted_by FROM applications 
+                WHERE id = %s AND accepted_by = %s
+            """, (app_id, user_id))
+            result = cursor.fetchone()
+            return result is not None
+    
+
 db = Database()

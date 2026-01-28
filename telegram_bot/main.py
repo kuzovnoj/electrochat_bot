@@ -59,6 +59,9 @@ def main():
         logger.error(f"✗ Ошибка: {e}")
         return
     
+    # Создаем фильтр для отмены
+    cancel_filter = filters.Regex(r'^(❌ Отмена|отмена|cancel|Отмена)$')
+    
     # Создаем ConversationHandler для создания заявки
     conv_handler = ConversationHandler(
         entry_points=[
@@ -66,15 +69,28 @@ def main():
             CallbackQueryHandler(handlers.create_application_callback, pattern='^create_application$')
         ],
         states={
-            Config.ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_address)],
-            Config.PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_phone)],
-            Config.TASK: [MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_task)],
-            Config.COMMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_comment)],
+            Config.ADDRESS: [
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),  # Обработка отмены
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_address)
+            ],
+            Config.PHONE: [
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),  # Обработка отмены
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_phone)
+            ],
+            Config.TASK: [
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),  # Обработка отмены
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_task)
+            ],
+            Config.COMMENT: [
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),  # Обработка отмены
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_comment)
+            ],
         },
         fallbacks=[
-            CommandHandler("cancel", handlers.handle_cancel),
-            MessageHandler(filters.Regex('^(❌ Отмена|cancel)$'), handlers.handle_cancel)
+            CommandHandler("cancel", handlers.handle_cancel_button),
+            MessageHandler(cancel_filter, handlers.handle_cancel_button)
         ],
+        allow_reentry=True
     )
     
     # Добавляем ConversationHandler
@@ -101,7 +117,7 @@ def main():
     # Базовые команды
     application.add_handler(CommandHandler("start", handlers.start))
     application.add_handler(CommandHandler("help", handlers.help_command))
-    application.add_handler(CommandHandler("cancel", handlers.handle_cancel))
+    application.add_handler(CommandHandler("cancel", handlers.handle_cancel_button))
     
     # Обработчик ошибок
     application.add_error_handler(handlers.error_handler)
