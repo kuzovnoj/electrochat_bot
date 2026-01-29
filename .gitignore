@@ -1,4 +1,5 @@
 .venv
 .git
 telegram_bot/.env
-telegram_bot/__pycache__
+.env
+__pycache__/

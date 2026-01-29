@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: telegram_bot_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-telegram_bot}
+      POSTGRES_USER: ${POSTGRES_USER:-bot_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bot_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - bot-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bot_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  telegram-bot:
+    build: .
+    container_name: telegram_bot
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_GROUP_CHAT_ID=${ADMIN_GROUP_CHAT_ID}
+    volumes:
+      - .:/app
+    command: ["bot"]
+    networks:
+      - bot-network
+
+  # Опционально: контейнер для отладки
+  telegram-bot-debug:
+    build: .
+    container_name: telegram_bot_debug
+    restart: "no"
+    depends_on:
+      - postgres
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_GROUP_CHAT_ID=${ADMIN_GROUP_CHAT_ID}
+    volumes:
+      - .:/app
+    command: ["debug"]
+    networks:
+      - bot-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  bot-network:
+    driver: bridge
