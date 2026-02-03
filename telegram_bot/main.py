@@ -120,7 +120,7 @@ def main():
     
     # Обработчик для ввода причины возврата (обрабатывает текст после нажатия кнопки возврата)
     application.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND,
+        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
         handlers.handle_return_reason
     ))
     

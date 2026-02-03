@@ -852,9 +852,13 @@ async def handle_return_reason(update: Update, context: ContextTypes.DEFAULT_TYP
     """Обработка причины возврата заявки"""
     user_id = update.effective_user.id
     
+    # Дополнительная проверка, что это личный чат
+    if update.effective_chat.type != 'private':
+        return  # Просто игнорируем сообщения в группах
+    
     if user_id not in return_states:
-        await update.message.reply_text("❌ Нет активного процесса возврата заявки.")
-        return ConversationHandler.END
+        # Не отправляем сообщение, если нет активного процесса
+        return
     
     reason = update.message.text
     app_data = return_states[user_id]
