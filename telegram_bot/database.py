@@ -6,7 +6,7 @@ class Database:
     def __init__(self):
         self.conn = psycopg2.connect(Config.DATABASE_URL)
         self.create_tables()
-        self.update_tables()  # Добавляем обновление таблиц
+        self.update_tables()
     
     def create_tables(self):
         with self.conn.cursor() as cursor:
@@ -25,6 +25,10 @@ class Database:
                     return_reason TEXT,
                     returned_by BIGINT,
                     returned_username VARCHAR(100),
+                    close_reason TEXT,
+                    closed_by BIGINT,
+                    closed_username VARCHAR(100),
+                    closed_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     message_id INTEGER
                 )
@@ -68,6 +72,46 @@ class Database:
                         ) THEN
                             ALTER TABLE applications ADD COLUMN returned_username VARCHAR(100);
                         END IF;
+                        
+                        -- Проверяем существование колонки close_reason
+                        IF NOT EXISTS (
+                            SELECT 1 
+                            FROM information_schema.columns 
+                            WHERE table_name='applications' 
+                            AND column_name='close_reason'
+                        ) THEN
+                            ALTER TABLE applications ADD COLUMN close_reason TEXT;
+                        END IF;
+                        
+                        -- Проверяем существование колонки closed_by
+                        IF NOT EXISTS (
+                            SELECT 1 
+                            FROM information_schema.columns 
+                            WHERE table_name='applications' 
+                            AND column_name='closed_by'
+                        ) THEN
+                            ALTER TABLE applications ADD COLUMN closed_by BIGINT;
+                        END IF;
+                        
+                        -- Проверяем существование колонки closed_username
+                        IF NOT EXISTS (
+                            SELECT 1 
+                            FROM information_schema.columns 
+                            WHERE table_name='applications' 
+                            AND column_name='closed_username'
+                        ) THEN
+                            ALTER TABLE applications ADD COLUMN closed_username VARCHAR(100);
+                        END IF;
+                        
+                        -- Проверяем существование колонки closed_at
+                        IF NOT EXISTS (
+                            SELECT 1 
+                            FROM information_schema.columns 
+                            WHERE table_name='applications' 
+                            AND column_name='closed_at'
+                        ) THEN
+                            ALTER TABLE applications ADD COLUMN closed_at TIMESTAMP;
+                        END IF;
                     END $$;
                 """)
                 self.conn.commit()
@@ -105,7 +149,11 @@ class Database:
                     accepted_username = %s,
                     return_reason = NULL,
                     returned_by = NULL,
-                    returned_username = NULL
+                    returned_username = NULL,
+                    close_reason = NULL,
+                    closed_by = NULL,
+                    closed_username = NULL,
+                    closed_at = NULL
                 WHERE id = %s
                 RETURNING id
             """, (user_id, username, app_id))
@@ -120,10 +168,32 @@ class Database:
                 SET status = 'pending', 
                     return_reason = %s,
                     returned_by = %s,
-                    returned_username = %s
+                    returned_username = %s,
+                    close_reason = NULL,
+                    closed_by = NULL,
+                    closed_username = NULL,
+                    closed_at = NULL
                 WHERE id = %s
                 RETURNING id
             """, (reason, user_id, username, app_id))
+            result = cursor.fetchone()
+            self.conn.commit()
+            return result is not None
+    
+    def close_application(self, app_id, user_id, username, reason):
+        """Закрытие заявки"""
+        with self.conn.cursor() as cursor:
+            from datetime import datetime
+            cursor.execute("""
+                UPDATE applications 
+                SET status = 'closed', 
+                    close_reason = %s,
+                    closed_by = %s,
+                    closed_username = %s,
+                    closed_at = %s
+                WHERE id = %s
+                RETURNING id
+            """, (reason, user_id, username, datetime.now(), app_id))
             result = cursor.fetchone()
             self.conn.commit()
             return result is not None

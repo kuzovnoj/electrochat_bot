@@ -135,6 +135,30 @@ def main():
         handlers.copy_data_callback, 
         pattern='^copy_'
     ))
+
+    # Обработчик кнопки "Закрыть заявку"
+    application.add_handler(CallbackQueryHandler(
+        handlers.close_application_callback, 
+        pattern='^close_app_'
+    ))
+    
+    # Обработчик кнопки "Работа выполнена"
+    application.add_handler(CallbackQueryHandler(
+        handlers.handle_close_done_callback, 
+        pattern='^close_done_'
+    ))
+    
+    # Обработчик кнопки "Клиент отказался"
+    application.add_handler(CallbackQueryHandler(
+        handlers.handle_close_refused_callback, 
+        pattern='^close_refused_'
+    ))
+    
+    # Обработчик кнопки "Отмена закрытия"
+    application.add_handler(CallbackQueryHandler(
+        handlers.cancel_close_callback, 
+        pattern='^cancel_close_'
+    ))    
     
     # Базовые команды
     application.add_handler(CommandHandler("start", handlers.start))

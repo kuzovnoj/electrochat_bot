@@ -431,20 +431,23 @@ async def handle_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Создаем кнопку для новой заявки
         keyboard = [[InlineKeyboardButton("📝 Создать еще одну заявку", callback_data='create_application')]]
-        '''
-        await update.message.reply_text(
-            "Что вы хотите сделать дальше?",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        '''
-        # Отправляем заявку в группу
+        
+        # Отправляем заявку в группу С КОММЕНТАРИЕМ
         keyboard = get_application_keyboard(app_id)
+        
+        # Формируем текст с комментарием
         message_text = (
             f"Новая заявка #{app_id}\n\n"
             f"Адрес: {application.address}\n"
             f"Задача: {application.task}\n"
-            f"От: @{application.username}"
         )
+        
+        # Добавляем комментарий, если он есть
+        if application.comment and application.comment.strip():
+            message_text += f"Комментарий: {application.comment}\n"
+        
+        # Добавляем информацию об отправителе
+        message_text += f"От: @{application.username}"
         
         sent_message = await context.bot.send_message(
             chat_id=Config.ADMIN_GROUP_CHAT_ID,
@@ -516,13 +519,20 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
     
     if success:
         # Обновляем сообщение в группе БЕЗ кнопок
+        # Обновляем сообщение в группе БЕЗ кнопок
         new_text = (
             f"Заявка #{app_id} ПРИНЯТА\n\n"
             f"Адрес: {application['address']}\n"
             f"Задача: {application['task']}\n"
-            f"От: @{application['username']}\n"
-            f"Принял: @{query.from_user.username or query.from_user.full_name}"
         )
+        
+        # Добавляем комментарий, если он есть
+        if application['comment'] and application['comment'].strip():
+            new_text += f"Комментарий: {application['comment']}\n"
+        
+        # Добавляем информацию об отправителе и исполнителе
+        new_text += f"От: @{application['username']}\n"
+        new_text += f"Принял: @{query.from_user.username or query.from_user.full_name}"
         
         # В ГРУППЕ убираем все кнопки после принятия
         await query.edit_message_text(
@@ -535,7 +545,8 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
         try:
             # Создаем кнопки ТОЛЬКО для личных сообщений
             return_keyboard = [
-                [InlineKeyboardButton("🔄 Вернуть заявку", callback_data=f'return_app_{app_id}')],
+                [InlineKeyboardButton("🔄 Вернуть заявку", callback_data=f'return_app_{app_id}'),
+                InlineKeyboardButton("🔒 Закрыть заявку", callback_data=f'close_app_{app_id}')],
 #                [InlineKeyboardButton("📞 Сохранить контакт", callback_data=f'save_contact_{app_id}')]
             ]
             
@@ -712,6 +723,10 @@ async def save_contact_callback(update: Update, context: ContextTypes.DEFAULT_TY
     keyboard = [
         [InlineKeyboardButton("📞 Скопировать номер", callback_data=f'copy_phone_{app_id}')],
         [InlineKeyboardButton("📍 Скопировать адрес", callback_data=f'copy_address_{app_id}')],
+        [
+            InlineKeyboardButton("🔄 Вернуть заявку", callback_data=f'return_app_{app_id}'),
+            InlineKeyboardButton("🔒 Закрыть заявку", callback_data=f'close_app_{app_id}')
+        ],
         [InlineKeyboardButton("📝 Создать свою заявку", callback_data='create_application')]
     ]
     
@@ -895,15 +910,22 @@ async def handle_return_reason(update: Update, context: ContextTypes.DEFAULT_TYP
         application = db.get_application(app_id)
         
         # Отправляем новое сообщение в группу с причиной возврата
+        # Отправляем новое сообщение в группу с причиной возврата
         keyboard = get_application_keyboard(app_id)
         message_text = (
             f"🔄 Заявка #{app_id} ВОЗВРАЩЕНА\n\n"
             f"Адрес: {application['address']}\n"
             f"Задача: {application['task']}\n"
-            f"От: @{application['username']}\n"
-            f"Причина возврата: {reason}\n"
-            f"Вернул: @{update.effective_user.username or update.effective_user.full_name}"
         )
+        
+        # Добавляем комментарий, если он есть
+        if application['comment'] and application['comment'].strip():
+            message_text += f"Комментарий: {application['comment']}\n"
+        
+        # Добавляем информацию о возврате
+        message_text += f"От: @{application['username']}\n"
+        message_text += f"Причина возврата: {reason}\n"
+        message_text += f"Вернул: @{update.effective_user.username or update.effective_user.full_name}"
         
         sent_message = await context.bot.send_message(
             chat_id=Config.ADMIN_GROUP_CHAT_ID,
@@ -1040,3 +1062,226 @@ async def update_application_message_with_return_button(app_id, user_id, context
             )
     except Exception as e:
         print(f"DEBUG: Не удалось отправить сообщение с кнопкой возврата: {e}")
+
+# Глобальные переменные для состояний закрытия заявки
+close_states = {}
+
+async def close_application_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик кнопки 'Закрыть заявку'"""
+    query = update.callback_query
+    await query.answer()
+    
+    try:
+        app_id = int(query.data.split('_')[2])
+    except (IndexError, ValueError):
+        await query.answer("❌ Ошибка: неверный ID заявки", show_alert=True)
+        return
+    
+    # Проверяем, принял ли этот пользователь заявку
+    user_id = query.from_user.id
+    is_accepted_by_user = db.check_application_owner(app_id, user_id)
+    
+    if not is_accepted_by_user:
+        await query.answer("❌ Только исполнитель, принявший заявку, может закрыть ее", show_alert=True)
+        return
+    
+    # Сохраняем состояние закрытия
+    close_states[user_id] = {
+        'app_id': app_id,
+        'message_id': query.message.message_id,
+        'chat_id': query.message.chat.id
+    }
+    
+    # Создаем клавиатуру с вариантами закрытия
+    keyboard = [
+        [InlineKeyboardButton("✅ Работа выполнена", callback_data=f'close_done_{app_id}')],
+        [InlineKeyboardButton("❌ Клиент отказался", callback_data=f'close_refused_{app_id}')],
+        [InlineKeyboardButton("❌ Отмена закрытия", callback_data=f'cancel_close_{app_id}')]
+    ]
+    
+    # Отправляем запрос причины закрытия в личные сообщения
+    try:
+        msg = await context.bot.send_message(
+            chat_id=user_id,
+            text=f"🔒 Закрытие заявки #{app_id}\n\n"
+                 f"Пожалуйста, выберите причину закрытия заявки:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        # Сохраняем ID личного сообщения
+        close_states[user_id]['private_message_id'] = msg.message_id
+        await query.answer("💬 Проверьте личные сообщения", show_alert=True)
+    except Exception as e:
+        print(f"DEBUG: Не удалось отправить запрос в личку: {e}")
+        # Если не удалось в личку, спрашиваем в текущем чате
+        await query.message.edit_text(
+            text=f"🔒 Закрытие заявки #{app_id}\n\n"
+                 f"Пожалуйста, выберите причину закрытия заявки:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+async def handle_close_done_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик кнопки 'Работа выполнена'"""
+    query = update.callback_query
+    await query.answer()
+    
+    try:
+        app_id = int(query.data.split('_')[2])
+    except (IndexError, ValueError):
+        await query.answer("❌ Ошибка", show_alert=True)
+        return
+    
+    # Закрываем заявку с причиной "Работа выполнена"
+    await close_application_with_reason(app_id, query.from_user, "Работа выполнена", context)
+    
+    # Удаляем сообщение с кнопками
+    try:
+        await query.message.delete()
+    except:
+        pass
+
+async def handle_close_refused_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик кнопки 'Клиент отказался'"""
+    query = update.callback_query
+    await query.answer()
+    
+    try:
+        app_id = int(query.data.split('_')[2])
+    except (IndexError, ValueError):
+        await query.answer("❌ Ошибка", show_alert=True)
+        return
+    
+    # Закрываем заявку с причиной "Клиент отказался"
+    await close_application_with_reason(app_id, query.from_user, "Клиент отказался", context)
+    
+    # Удаляем сообщение с кнопками
+    try:
+        await query.message.delete()
+    except:
+        pass
+
+async def close_application_with_reason(app_id, user, reason, context):
+    """Закрытие заявки с указанной причиной"""
+    user_id = user.id
+    username = user.username or user.full_name
+    
+    # Проверяем, имеет ли пользователь право закрыть заявку
+    is_accepted_by_user = db.check_application_owner(app_id, user_id)
+    if not is_accepted_by_user:
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="❌ Вы не можете закрыть эту заявку."
+            )
+        except:
+            pass
+        return
+    
+    # Закрываем заявку в базе данных
+    success = db.close_application(app_id, user_id, username, reason)
+    
+    if success:
+        # Получаем обновленные данные заявки
+        application = db.get_application(app_id)
+        
+        # НЕ ОБНОВЛЯЕМ сообщение в группе - оставляем как есть
+        # (или можно просто удалить кнопки, но не менять текст)
+        # try:
+        #     if application.get('message_id'):
+        #         await context.bot.edit_message_reply_markup(
+        #             chat_id=Config.ADMIN_GROUP_CHAT_ID,
+        #             message_id=application['message_id'],
+        #             reply_markup=None  # Удаляем кнопки
+        #         )
+        # except Exception as e:
+        #     print(f"DEBUG: Не удалось удалить кнопки: {e}")
+        
+        # Уведомляем создателя заявки
+        if user_id != application['user_id']:
+            try:
+                await context.bot.send_message(
+                    chat_id=application['user_id'],
+                    text=f"🔒 Ваша заявка #{app_id} закрыта!\n\n"
+                         f"Исполнитель: @{application['accepted_username']}\n"
+                         f"Причина: {reason}\n\n"
+                         f"Спасибо за использование нашего сервиса!"
+                )
+            except Exception as e:
+                print(f"DEBUG: Не удалось уведомить создателя: {e}")
+        
+        # Подтверждение исполнителю
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=f"✅ Заявка #{app_id} успешно закрыта.\n"
+                     f"Причина: {reason}\n\n"
+                     f"Создатель заявки уведомлен."
+            )
+        except Exception as e:
+            print(f"DEBUG: Не удалось отправить подтверждение: {e}")
+        
+        # Очищаем состояние
+        if user_id in close_states:
+            del close_states[user_id]
+        
+        # Убираем кнопки из личного сообщения пользователя
+        try:
+            # Ищем и удаляем сообщение с кнопками закрытия
+            if user_id in close_states and 'private_message_id' in close_states[user_id]:
+                await context.bot.delete_message(
+                    chat_id=user_id,
+                    message_id=close_states[user_id]['private_message_id']
+                )
+        except Exception as e:
+            print(f"DEBUG: Не удалось удалить сообщение с кнопками: {e}")
+    else:
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="❌ Ошибка при закрытии заявки."
+            )
+        except:
+            pass
+
+async def cancel_close_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик отмены закрытия заявки"""
+    query = update.callback_query
+    await query.answer()
+    
+    try:
+        app_id = int(query.data.split('_')[2])
+    except (IndexError, ValueError):
+        await query.answer("❌ Ошибка", show_alert=True)
+        return
+    
+    user_id = query.from_user.id
+    
+    # Очищаем состояние закрытия
+    if user_id in close_states:
+        del close_states[user_id]
+    
+    # Возвращаем исходное сообщение с кнопками
+    application = db.get_application(app_id)
+    if application and application['status'] == 'accepted':
+        keyboard = [
+            [InlineKeyboardButton("🔄 Вернуть заявку", callback_data=f'return_app_{app_id}')],
+            [InlineKeyboardButton("📞 Сохранить контакт", callback_data=f'save_contact_{app_id}')],
+            [InlineKeyboardButton("🔒 Закрыть заявку", callback_data=f'close_app_{app_id}')]
+        ]
+        
+        text = (
+            f"Вы приняли заявку #{app_id}!\n\n"
+            f"Данные заявки:\n"
+            f"Адрес: {application['address']}\n"
+            f"Телефон: {application['phone']}\n"
+            f"Задача: {application['task']}\n"
+            f"Комментарий: {application['comment'] or 'нет'}\n"
+            f"Отправитель: @{application['username']}"
+        )
+        
+        await query.edit_message_text(
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode=ParseMode.MARKDOWN
+        )
+    else:
+        await query.edit_message_text("❌ Закрытие заявки отменено.")
