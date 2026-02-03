@@ -12,6 +12,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Состояния для возврата заявки
+RETURN_REASON = 100
+
 async def post_init(application: Application):
     """Установка команд меню после инициализации бота"""
     try:
@@ -70,19 +73,19 @@ def main():
         ],
         states={
             Config.ADDRESS: [
-                MessageHandler(cancel_filter, handlers.handle_cancel_button),  # Обработка отмены
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),
                 MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_address)
             ],
             Config.PHONE: [
-                MessageHandler(cancel_filter, handlers.handle_cancel_button),  # Обработка отмены
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),
                 MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_phone)
             ],
             Config.TASK: [
-                MessageHandler(cancel_filter, handlers.handle_cancel_button),  # Обработка отмены
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),
                 MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_task)
             ],
             Config.COMMENT: [
-                MessageHandler(cancel_filter, handlers.handle_cancel_button),  # Обработка отмены
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),
                 MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_comment)
             ],
         },
@@ -93,6 +96,7 @@ def main():
         allow_reentry=True
     )
     
+    # Создаем обработчик для возврата заявки (без ConversationHandler, так как это один шаг)
     # Добавляем ConversationHandler
     application.add_handler(conv_handler)
     
@@ -100,6 +104,24 @@ def main():
     application.add_handler(CallbackQueryHandler(
         handlers.accept_application_callback, 
         pattern='^accept_'
+    ))
+    
+    # Обработчик кнопки "Вернуть заявку"
+    application.add_handler(CallbackQueryHandler(
+        handlers.return_application_callback, 
+        pattern='^return_app_'
+    ))
+    
+    # Обработчик кнопки "Отмена возврата"
+    application.add_handler(CallbackQueryHandler(
+        handlers.cancel_return_callback, 
+        pattern='^cancel_return_'
+    ))
+    
+    # Обработчик для ввода причины возврата (обрабатывает текст после нажатия кнопки возврата)
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND,
+        handlers.handle_return_reason
     ))
     
     # Обработчик кнопки "Сохранить контакт"

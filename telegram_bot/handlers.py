@@ -515,6 +515,7 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
     )
     
     if success:
+        # Обновляем сообщение в группе БЕЗ кнопок
         new_text = (
             f"Заявка #{app_id} ПРИНЯТА\n\n"
             f"Адрес: {application['address']}\n"
@@ -523,16 +524,20 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
             f"Принял: @{query.from_user.username or query.from_user.full_name}"
         )
         
-        await query.edit_message_text(text=new_text, parse_mode=ParseMode.MARKDOWN)
+        # В ГРУППЕ убираем все кнопки после принятия
+        await query.edit_message_text(
+            text=new_text, 
+            reply_markup=None,  # Убираем клавиатуру в группе
+            parse_mode=ParseMode.MARKDOWN
+        )
         
-        # Пытаемся отправить данные в личку
+        # Пытаемся отправить данные в личку с кнопками
         try:
-            # Создаем кнопку "Написать боту" с пользовательским параметром
-            start_button = InlineKeyboardButton(
-                "💬 Написать боту", 
-                url=f"https://t.me/{context.bot.username}?start=app_{app_id}"
-            )
-            keyboard = InlineKeyboardMarkup([[start_button]])
+            # Создаем кнопки ТОЛЬКО для личных сообщений
+            return_keyboard = [
+                [InlineKeyboardButton("🔄 Вернуть заявку", callback_data=f'return_app_{app_id}')],
+#                [InlineKeyboardButton("📞 Сохранить контакт", callback_data=f'save_contact_{app_id}')]
+            ]
             
             full_info = (
                 f"Вы приняли заявку #{app_id}!\n\n"
@@ -541,18 +546,20 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
                 f"Телефон: {application['phone']}\n"
                 f"Задача: {application['task']}\n"
                 f"Комментарий: {application['comment'] or 'нет'}\n"
-                f"Отправитель: @{application['username']}"
+                f"Отправитель: @{application['username']}\n\n"
+                f"Если по какой-то причине вы не можете выполнить заявку, "
+                f"вы можете вернуть ее в общий чат."
             )
             
-            # Пытаемся отправить сообщение в личку
+            # Отправляем сообщение в личку с кнопками
             await context.bot.send_message(
                 chat_id=user_id,
                 text=full_info,
                 parse_mode=ParseMode.MARKDOWN,
-                reply_markup=keyboard
+                reply_markup=InlineKeyboardMarkup(return_keyboard)
             )
             
-            # Сообщение в группу, что данные отправлены
+            # Сообщение в группе, что данные отправлены
             await query.message.reply_text(
                 f"{query.from_user.username or query.from_user.full_name}, "
                 f"данные заявки #{app_id} отправлены вам в личные сообщения.",
@@ -564,7 +571,6 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
             print(f"DEBUG: Не удалось отправить в личку: {e}")
             
             # Создаем ссылку с временным токеном или параметром пользователя
-            # Можно использовать простой хеш для проверки
             import hashlib
             import time
             
@@ -583,7 +589,7 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
                 'expires': time.time() + 3600
             }
             
-            # Если не получилось - показываем кнопку для начала диалога
+            # Создаем кнопку для начала диалога с ботом
             start_button = InlineKeyboardButton(
                 "💬 Получить данные заявки", 
                 url=f"https://t.me/{context.bot.username}?start=token_{token_hash}"
@@ -603,7 +609,7 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
                 reply_to_message_id=query.message.message_id
             )
             
-            # Сохраняем ID сообщения, чтобы можно было удалить его позже
+            # Сохраняем ID сообщения
             context.bot_data[f'app_{app_id}_message'] = {
                 'message_id': reply_msg.message_id,
                 'chat_id': query.message.chat.id,
@@ -622,7 +628,7 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
             except Exception as e:
                 print(f"DEBUG: Не удалось уведомить создателя: {e}")
     else:
-        await query.answer("⚠️ Заявка уже принята!", show_alert=True)
+        await query.answer("⚠️ Не удалось принять заявку!", show_alert=True)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда помощи"""
@@ -663,7 +669,6 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         pass
 
-# В конец файла handlers.py добавьте:
 
 async def save_contact_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик сохранения контакта"""
@@ -785,3 +790,249 @@ async def handle_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     
     return ConversationHandler.END
+
+
+# Глобальные переменные для состояний возврата заявки
+return_states = {}
+
+async def return_application_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик кнопки 'Вернуть заявку'"""
+    query = update.callback_query
+    await query.answer()
+    
+    try:
+        app_id = int(query.data.split('_')[2])
+    except (IndexError, ValueError):
+        await query.answer("❌ Ошибка: неверный ID заявки", show_alert=True)
+        return
+    
+    # Проверяем, принял ли этот пользователь заявку
+    user_id = query.from_user.id
+    is_accepted_by_user = db.check_application_owner(app_id, user_id)
+    
+    if not is_accepted_by_user:
+        await query.answer("❌ Только исполнитель, принявший заявку, может вернуть ее", show_alert=True)
+        return
+    
+    # Сохраняем состояние возврата
+    return_states[user_id] = {
+        'app_id': app_id,
+        'message_id': query.message.message_id,
+        'chat_id': query.message.chat.id
+    }
+    
+    # Запрашиваем причину возврата
+    keyboard = [[InlineKeyboardButton("❌ Отмена возврата", callback_data=f'cancel_return_{app_id}')]]
+    
+    # Отправляем запрос причины в ЛИЧНЫЕ сообщения
+    try:
+        msg = await context.bot.send_message(
+            chat_id=user_id,
+            text=f"📝 Возврат заявки #{app_id}\n\n"
+                 f"Пожалуйста, укажите причину возврата заявки в общий чат:\n"
+                 f"(или нажмите кнопку отмены в группе)",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        # Сохраняем ID личного сообщения
+        return_states[user_id]['private_message_id'] = msg.message_id
+        await query.answer("💬 Проверьте личные сообщения для указания причины", show_alert=True)
+    except Exception as e:
+        print(f"DEBUG: Не удалось отправить запрос в личку: {e}")
+        # Если не удалось в личку, просим в группе
+        reply_msg = await query.message.reply_text(
+            f"📝 Возврат заявки #{app_id}\n\n"
+            f"Пожалуйста, укажите причину возврата заявки в общий чат:\n"
+            f"(или нажмите '❌ Отмена возврата')",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            reply_to_message_id=query.message.message_id
+        )
+        return_states[user_id]['group_message_id'] = reply_msg.message_id
+
+async def handle_return_reason(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка причины возврата заявки"""
+    user_id = update.effective_user.id
+    
+    if user_id not in return_states:
+        await update.message.reply_text("❌ Нет активного процесса возврата заявки.")
+        return ConversationHandler.END
+    
+    reason = update.message.text
+    app_data = return_states[user_id]
+    app_id = app_data['app_id']
+    
+    # Проверяем, имеет ли пользователь право вернуть заявку
+    is_accepted_by_user = db.check_application_owner(app_id, user_id)
+    if not is_accepted_by_user:
+        await update.message.reply_text("❌ Вы не можете вернуть эту заявку.")
+        # Очищаем состояние
+        if user_id in return_states:
+            del return_states[user_id]
+        return ConversationHandler.END
+    
+    # Обновляем заявку в базе данных
+    success = db.return_application(
+        app_id, 
+        user_id,
+        update.effective_user.username or update.effective_user.full_name,
+        reason
+    )
+    
+    if success:
+        # Удаляем старое сообщение в группе (если возможно)
+        try:
+            await context.bot.delete_message(
+                chat_id=Config.ADMIN_GROUP_CHAT_ID,
+                message_id=app_data['message_id']
+            )
+        except Exception as e:
+            print(f"DEBUG: Не удалось удалить старое сообщение: {e}")
+        
+        # Получаем обновленные данные заявки
+        application = db.get_application(app_id)
+        
+        # Отправляем новое сообщение в группу с причиной возврата
+        keyboard = get_application_keyboard(app_id)
+        message_text = (
+            f"🔄 Заявка #{app_id} ВОЗВРАЩЕНА\n\n"
+            f"Адрес: {application['address']}\n"
+            f"Задача: {application['task']}\n"
+            f"От: @{application['username']}\n"
+            f"Причина возврата: {reason}\n"
+            f"Вернул: @{update.effective_user.username or update.effective_user.full_name}"
+        )
+        
+        sent_message = await context.bot.send_message(
+            chat_id=Config.ADMIN_GROUP_CHAT_ID,
+            text=message_text,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        # Обновляем message_id в базе данных
+        db.set_message_id(app_id, sent_message.message_id)
+        
+        # Уведомляем создателя заявки
+        if user_id != application['user_id']:
+            try:
+                await context.bot.send_message(
+                    chat_id=application['user_id'],
+                    text=f"⚠️ Ваша заявка #{app_id} возвращена в общий чат.\n"
+                         f"Причина: {reason}\n"
+                         f"Заявка будет доступна другим исполнителям."
+                )
+            except Exception as e:
+                print(f"DEBUG: Не удалось уведомить создателя: {e}")
+        
+        # Подтверждение пользователю
+        await update.message.reply_text(
+            f"✅ Заявка #{app_id} успешно возвращена в общий чат.\n"
+            f"Причина: {reason}"
+        )
+        try:
+            # Удаляем сообщение с кнопками возврата
+            await context.bot.delete_message(
+                chat_id=user_id,
+                message_id=app_data.get('private_message_id', 0)
+            )
+        except Exception as e:
+            print(f"DEBUG: Не удалось удалить сообщение с кнопками: {e}")
+
+    else:
+        await update.message.reply_text("❌ Ошибка при возврате заявки.")
+    
+    # Очищаем состояние
+    if user_id in return_states:
+        del return_states[user_id]
+    
+    return ConversationHandler.END
+
+
+async def cancel_return_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик отмены возврата заявки"""
+    query = update.callback_query
+    await query.answer()
+    
+    try:
+        app_id = int(query.data.split('_')[2])
+    except (IndexError, ValueError):
+        await query.answer("❌ Ошибка", show_alert=True)
+        return
+    
+    user_id = query.from_user.id
+    
+    # Очищаем состояние возврата
+    if user_id in return_states:
+        del return_states[user_id]
+    
+    await query.edit_message_text("❌ Возврат заявки отменен.")
+
+async def update_application_message_with_return_button(app_id, user_id, context):
+    """Обновляет сообщение с заявкой, добавляя кнопку возврата"""
+    application = db.get_application(app_id)
+    
+    if not application or application['status'] != 'accepted':
+        return
+    
+    # Проверяем, является ли пользователь исполнителем
+    is_accepted_by_user = db.check_application_owner(app_id, user_id)
+    if not is_accepted_by_user:
+        return
+    
+    # Обновляем сообщение с кнопкой возврата
+    new_text = (
+        f"Заявка #{app_id} ПРИНЯТА\n\n"
+        f"Адрес: {application['address']}\n"
+        f"Задача: {application['task']}\n"
+        f"От: @{application['username']}\n"
+        f"Принял: @{application['accepted_username']}"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("🔄 Вернуть заявку", callback_data=f'return_app_{app_id}')],
+        [InlineKeyboardButton("📞 Сохранить контакт", callback_data=f'save_contact_{app_id}')]
+    ]
+    
+    # Пытаемся найти и обновить сообщение
+    if application.get('message_id'):
+        try:
+            await context.bot.edit_message_text(
+                chat_id=Config.ADMIN_GROUP_CHAT_ID,
+                message_id=application['message_id'],
+                text=new_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except Exception as e:
+            print(f"DEBUG: Не удалось обновить сообщение: {e}")
+    
+    # Также обновляем сообщение в личке пользователя, если оно есть
+    try:
+        # Ищем последние сообщения бота пользователю
+        async with context.bot:
+            # Отправляем обновленное сообщение с кнопкой возврата
+            return_keyboard = [[
+                InlineKeyboardButton("🔄 Вернуть заявку", callback_data=f'return_app_{app_id}'),
+                InlineKeyboardButton("📞 Сохранить контакт", callback_data=f'save_contact_{app_id}')
+            ]]
+            
+            full_info = (
+                f"Вы приняли заявку #{app_id}!\n\n"
+                f"Данные заявки:\n"
+                f"Адрес: {application['address']}\n"
+                f"Телефон: {application['phone']}\n"
+                f"Задача: {application['task']}\n"
+                f"Комментарий: {application['comment'] or 'нет'}\n"
+                f"Отправитель: @{application['username']}\n\n"
+                f"Если по какой-то причине вы не можете выполнить заявку, "
+                f"вы можете вернуть ее в общий чат."
+            )
+            
+            # Пытаемся отправить сообщение с кнопкой возврата
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=full_info,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup(return_keyboard)
+            )
+    except Exception as e:
+        print(f"DEBUG: Не удалось отправить сообщение с кнопкой возврата: {e}")
