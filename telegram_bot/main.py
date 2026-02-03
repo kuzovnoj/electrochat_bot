@@ -22,6 +22,8 @@ async def post_init(application: Application):
         private_commands = [
             BotCommand("start", "Начать работу"),
             BotCommand("new", "Создать новую заявку"),
+            BotCommand("myapps", "Мои принятые заявки"),
+            BotCommand("myrequests", "Мои отправленные заявки"),
             BotCommand("help", "Помощь по использованию"),
             BotCommand("cancel", "Отмена текущего действия")
         ]
@@ -159,12 +161,43 @@ def main():
         handlers.cancel_close_callback, 
         pattern='^cancel_close_'
     ))    
+
+    # Обработчики для новых опций меню
+    application.add_handler(CallbackQueryHandler(
+        handlers.show_my_accepted_applications,
+        pattern='^my_accepted_apps$'
+    ))
     
+    application.add_handler(CallbackQueryHandler(
+        handlers.show_my_created_applications,
+        pattern='^my_created_apps$'
+    ))
+    
+    application.add_handler(CallbackQueryHandler(
+        handlers.show_help_callback,
+        pattern='^show_help$'
+    ))
+    
+    # Обработчик кнопки "Закрыть" из списка заявок
+    application.add_handler(CallbackQueryHandler(
+        handlers.handle_close_from_list_callback, 
+        pattern='^close_from_list_'
+    ))
+    
+    # Обработчик кнопки "Назад в меню"
+    application.add_handler(CallbackQueryHandler(
+        handlers.back_to_menu_callback, 
+        pattern='^back_to_menu$'
+    ))
+
     # Базовые команды
     application.add_handler(CommandHandler("start", handlers.start))
     application.add_handler(CommandHandler("help", handlers.help_command))
     application.add_handler(CommandHandler("cancel", handlers.handle_cancel_button))
-    
+    # Также добавим команды для удобства
+    application.add_handler(CommandHandler("myapps", handlers.show_my_accepted_applications))
+    application.add_handler(CommandHandler("myrequests", handlers.show_my_created_applications))
+
     # Обработчик ошибок
     application.add_error_handler(handlers.error_handler)
     

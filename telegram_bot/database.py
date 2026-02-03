@@ -221,6 +221,26 @@ class Database:
             """, (app_id, user_id))
             result = cursor.fetchone()
             return result is not None
+
+    def get_user_accepted_applications(self, user_id):
+        """Получить заявки, принятые пользователем"""
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT * FROM applications 
+                WHERE accepted_by = %s AND status = 'accepted'
+                ORDER BY created_at DESC
+            """, (user_id,))
+            return cursor.fetchall()
     
+    def get_user_created_applications(self, user_id):
+        """Получить заявки, созданные пользователем"""
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT * FROM applications 
+                WHERE user_id = %s AND status IN ('pending', 'accepted')
+                ORDER BY created_at DESC
+            """, (user_id,))
+            return cursor.fetchall()
+
 
 db = Database()
