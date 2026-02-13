@@ -6,12 +6,86 @@ from models import Application
 from database import db
 from keyboards import *
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
 # Простое хранилище состояний
 user_states = {}
 
+async def webhook_application(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик вебхука для создания заявки из Django"""
+    try:
+        # Получаем данные из запроса
+        data = json.loads(update.message.text)
+        
+        logger.info(f"Получена заявка из Django: {data}")
+        
+        # Создаем объект заявки
+        application = Application(
+            user_id=data.get('user_id', 0),  # Для заявок с сайта user_id = 0
+            username=data.get('username', 'Клиент с сайта'),
+            address=data['address'],
+            phone=data['phone'],
+            task=data['task'],
+            comment=data.get('comment', ''),
+            photo_file_id=data.get('photo_file_id'),
+            status='pending'
+        )
+        
+        # Сохраняем в БД бота
+        app_id = db.create_application(application)
+        logger.info(f"Заявка #{app_id} сохранена в БД бота")
+        
+        # Формируем сообщение для группы
+        message_text = (
+            f"⚠️ ВНИМАНИЕ! Заявка поступила напрямую от клиента!\n\n"
+            f"📋 Заявка #{app_id}\n\n"
+            f"📍 Адрес: {application.address}\n"
+            f"📞 Телефон: {application.phone}\n"
+            f"🔧 Задача: {application.task}\n"
+        )
+        
+        if application.comment:
+            message_text += f"💬 Комментарий: {application.comment}\n"
+        
+        message_text += f"👤 От: {application.username}"
+        
+        from keyboards import get_application_keyboard
+        
+        # Отправляем в группу
+        if application.photo_file_id:
+            sent_message = await context.bot.send_photo(
+                chat_id=Config.ADMIN_GROUP_CHAT_ID,
+                photo=application.photo_file_id,
+                caption=message_text,
+                reply_markup=get_application_keyboard(app_id),
+                parse_mode=ParseMode.MARKDOWN
+            )
+        else:
+            sent_message = await context.bot.send_message(
+                chat_id=Config.ADMIN_GROUP_CHAT_ID,
+                text=message_text,
+                reply_markup=get_application_keyboard(app_id),
+                parse_mode=ParseMode.MARKDOWN
+            )
+        
+        # Сохраняем message_id
+        db.set_message_id(app_id, sent_message.message_id)
+        
+        # Отвечаем Django
+        await update.message.reply_text(json.dumps({
+            'status': 'success',
+            'app_id': app_id,
+            'message_id': sent_message.message_id
+        }))
+        
+    except Exception as e:
+        logger.error(f"Ошибка при обработке заявки из Django: {e}")
+        await update.message.reply_text(json.dumps({
+            'status': 'error',
+            'error': str(e)
+        }))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""

@@ -213,6 +213,12 @@ def main():
     # Обработчик ошибок
     application.add_error_handler(handlers.error_handler)
     
+    # Добавьте этот обработчик после других обработчиков
+    application.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & filters.Regex(r'^{.*}$'),  # JSON сообщения
+        handlers.webhook_application
+    ))
+    
     logger.info("✓ Бот запущен...")
     logger.info("✓ Готов к работе!")
     
