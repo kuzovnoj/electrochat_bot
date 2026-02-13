@@ -15,4 +15,4 @@ class Config:
     ADMIN_GROUP_CHAT_ID = int(os.getenv('ADMIN_GROUP_CHAT_ID', -1001234567890))
     
     # States для ConversationHandler
-    ADDRESS, PHONE, TASK, COMMENT = range(4)
+    ADDRESS, PHONE, TASK, COMMENT, PHOTO = range(5)  # Добавили PHOTO
