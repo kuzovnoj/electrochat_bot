@@ -13,17 +13,85 @@ logger = logging.getLogger(__name__)
 # Простое хранилище состояний
 user_states = {}
 
+async def handle_mediator_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик команд от бота-посредника
+    """
+    try:
+        # Проверяем, что сообщение от бота-посредника
+        if update.message.from_user.is_bot:
+            data = json.loads(update.message.text)
+            
+            if data.get('action') == 'create_application':
+                app_data = data['data']
+                
+                # Создаем заявку в БД
+                application = Application(
+                    user_id=0,
+                    username=app_data['username'],
+                    address=app_data['address'],
+                    phone=app_data['phone'],
+                    task=app_data['task'],
+                    comment=app_data.get('comment', ''),
+                    status='pending'
+                )
+                
+                app_id = db.create_application(application)
+                logger.info(f"✅ Заявка #{app_id} создана из заявки с сайта")
+                
+                # Отправляем в группу
+                message_text = (
+                    f"⚠️ ЗАЯВКА С САЙТА #{app_id}\n\n"
+                    f"📍 Адрес: {app_data['address']}\n"
+                    f"📞 Телефон: {app_data['phone']}\n"
+                    f"🔧 Задача: {app_data['task']}\n"
+                )
+                
+                await context.bot.send_message(
+                    chat_id=Config.ADMIN_GROUP_CHAT_ID,
+                    text=message_text,
+                    reply_markup=get_application_keyboard(app_id)
+                )
+                
+    except Exception as e:
+        logger.error(f"Ошибка: {e}")
 
 async def webhook_create_application(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Обработчик вебхука для создания заявки из Django
     """
+    
     try:
         # Проверяем, что сообщение в личном чате
         if update.effective_chat.type != 'private':
             logger.warning("⚠️ Сообщение не из личного чата, игнорируем")
             return
         
+        if update.message.text:
+            raw_text = update.message.text
+            logger.info("📥 Текст из update.message.text")
+        elif update.message.caption:
+            raw_text = update.message.caption
+            logger.info("📥 Текст из update.message.caption")
+        else:
+            logger.error("❌ Нет текста в сообщении")
+            return
+
+        # Добавьте принудительное преобразование в строку
+        raw_text = str(raw_text)
+
+        # Очистка от лишних символов
+        raw_text = raw_text.strip()
+        if raw_text.startswith("'") and raw_text.endswith("'"):
+            raw_text = raw_text[1:-1]
+        if raw_text.startswith('"') and raw_text.endswith('"'):
+            raw_text = raw_text[1:-1]
+
+        logger.info(f"📥 Текст после очистки: {repr(raw_text)}")
+        
+        #if not raw_text.startswith('{"user_id"'):
+        #    return
+
         logger.info("="*60)
         logger.info("📥 ПОЛУЧЕНО СООБЩЕНИЕ ОТ DJANGO")
         logger.info(f"👤 От пользователя: {update.effective_user.id}")
@@ -31,20 +99,21 @@ async def webhook_create_application(update: Update, context: ContextTypes.DEFAU
         
         # Парсим JSON из сообщения
         try:
-            data = json.loads(update.message.text)
-            logger.info(f"📦 Распарсенные данные: {json.dumps(data, ensure_ascii=False, indent=2)}")
+            data = json.loads(raw_text)
+            logger.info(f"✅ JSON успешно распарсен после очистки")
         except json.JSONDecodeError as e:
             logger.error(f"❌ Ошибка парсинга JSON: {e}")
-            # ВАЖНО: Отправляем ошибку в формате JSON
-            error_response = {
-                'status': 'error',
-                'error': f'Неверный формат JSON: {str(e)}'
-            }
-            await update.message.reply_text(
-                json.dumps(error_response, ensure_ascii=False),
-                parse_mode=None  # Без Markdown
-            )
-            return
+            # Пробуем другой метод - ищем первую { и парсим с этого места
+            try:
+                start_idx = raw_text.find('{')
+                if start_idx != -1:
+                    data = json.loads(raw_text[start_idx:])
+                    logger.info(f"✅ JSON распарсен после обрезки с позиции {start_idx}")
+                else:
+                    raise
+            except:
+                await update.message.reply_text("❌ Ошибка формата JSON")
+                return
         
         # Проверяем обязательные поля
         required_fields = ['address', 'phone', 'task']

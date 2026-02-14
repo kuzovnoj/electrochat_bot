@@ -1,6 +1,6 @@
 import logging
 from telegram import Update, BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeAllGroupChats
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler, ContextTypes
 from config import Config
 import handlers
 from database import db
@@ -112,6 +112,12 @@ def main():
     
     # ТЕПЕРЬ добавляем обработчики в правильном порядке
     
+    # 1.
+#    application.add_handler(MessageHandler(
+#        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
+#        handlers.handle_mediator_command
+#    ))
+
     # 1. Сначала самый специфичный - JSON от Django
     application.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
