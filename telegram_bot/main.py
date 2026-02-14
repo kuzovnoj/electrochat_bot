@@ -202,6 +202,13 @@ def main():
         pattern='^back_to_menu$'
     ))
 
+    # Добавьте этот обработчик после других обработчиков, перед application.run_polling()
+    # Обработчик вебхука для заявок из Django
+    application.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
+        handlers.webhook_create_application
+    ))
+
     # Базовые команды
     application.add_handler(CommandHandler("start", handlers.start))
     application.add_handler(CommandHandler("help", handlers.help_command))
@@ -213,12 +220,7 @@ def main():
     # Обработчик ошибок
     application.add_error_handler(handlers.error_handler)
     
-    # Добавьте этот обработчик после других обработчиков, перед application.run_polling()
-    # Обработчик вебхука для заявок из Django
-    application.add_handler(MessageHandler(
-        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
-        handlers.webhook_create_application
-    ))
+
     
     logger.info("✓ Бот запущен...")
     logger.info("✓ Готов к работе!")
