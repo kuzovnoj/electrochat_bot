@@ -22,11 +22,6 @@ def get_cancel_keyboard():
     keyboard = [['❌ Отмена']]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
 
-def get_photo_choice_keyboard():
-    """Клавиатура для выбора добавления фото"""
-    keyboard = [['✅ Да', '❌ Нет']]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
-
 def get_application_keyboard(application_id):
     """Клавиатура для принятия заявки"""
     keyboard = [[
@@ -41,6 +36,7 @@ def get_application_management_keyboard(app_id):
             InlineKeyboardButton("🔄 Вернуть заявку", callback_data=f'return_app_{app_id}'),
             InlineKeyboardButton("🔒 Закрыть заявку", callback_data=f'close_app_{app_id}')
         ],
+#        [InlineKeyboardButton("📞 Сохранить контакт", callback_data=f'save_contact_{app_id}')]
     ]
     return InlineKeyboardMarkup(keyboard)
 

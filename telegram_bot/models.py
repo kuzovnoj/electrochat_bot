@@ -6,15 +6,13 @@ class ApplicationStatus(Enum):
     CLOSED = "closed"
 
 class Application:
-    def __init__(self, user_id, username, address, phone, task, comment, 
-                 photo_file_id=None, status=ApplicationStatus.PENDING.value):
+    def __init__(self, user_id, username, address, phone, task, comment, status=ApplicationStatus.PENDING.value):
         self.user_id = user_id
         self.username = username
         self.address = address
         self.phone = phone
         self.task = task
         self.comment = comment
-        self.photo_file_id = photo_file_id  # Добавлено поле для фото
         self.status = status
         self.accepted_by = None
     

@@ -19,7 +19,6 @@ class Database:
                     phone VARCHAR(20) NOT NULL,
                     task TEXT NOT NULL,
                     comment TEXT,
-                    photo_file_id VARCHAR(200),  -- Добавлено поле для фото
                     status VARCHAR(20) DEFAULT 'pending',
                     accepted_by BIGINT,
                     accepted_username VARCHAR(100),
@@ -44,16 +43,6 @@ class Database:
                 cursor.execute("""
                     DO $$
                     BEGIN
-                        -- Проверяем существование колонки photo_file_id
-                        IF NOT EXISTS (
-                            SELECT 1 
-                            FROM information_schema.columns 
-                            WHERE table_name='applications' 
-                            AND column_name='photo_file_id'
-                        ) THEN
-                            ALTER TABLE applications ADD COLUMN photo_file_id VARCHAR(200);
-                        END IF;
-                        
                         -- Проверяем существование колонки return_reason
                         IF NOT EXISTS (
                             SELECT 1 
@@ -135,19 +124,17 @@ class Database:
         with self.conn.cursor() as cursor:
             cursor.execute("""
                 INSERT INTO applications 
-                (user_id, username, address, phone, task, comment, photo_file_id, status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                (user_id, username, address, phone, task, comment, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (application.user_id, application.username, 
                   application.address, application.phone, 
-                  application.task, application.comment,
-                  application.photo_file_id,  # Добавлено поле для фото
+                  application.task, application.comment, 
                   application.status))
             app_id = cursor.fetchone()[0]
             self.conn.commit()
             return app_id
     
-    # Остальные методы остаются без изменений...
     def get_application(self, app_id):
         with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
             cursor.execute("SELECT * FROM applications WHERE id = %s", (app_id,))
