@@ -128,36 +128,6 @@ async def webhook_create_application(update: Update, context: ContextTypes.DEFAU
             'error': str(e)
         }))
 
-async def accept_application_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик принятия заявки"""
-    query = update.callback_query
-    await query.answer()
-    
-    app_id = int(query.data.split('_')[1])
-    logger.info(f"🔍 Попытка принять заявку #{app_id}")
-    
-    application = db.get_application(app_id)
-    user_id = query.from_user.id
-    
-    if not application:
-        logger.error(f"❌ Заявка #{app_id} не найдена в БД")
-        await query.edit_message_text("❌ Заявка не найдена.")
-        return
-    
-    logger.info(f"✅ Заявка #{app_id} найдена в БД, статус: {application['status']}")
-    
-    success = db.accept_application(
-        app_id, 
-        user_id,
-        query.from_user.username or query.from_user.full_name
-    )
-    
-    if success:
-        logger.info(f"✅ Заявка #{app_id} успешно принята пользователем {user_id}")
-        # ... остальной код
-    else:
-        logger.error(f"❌ Не удалось принять заявку #{app_id}")
-        await query.answer("⚠️ Не удалось принять заявку!", show_alert=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
@@ -752,6 +722,187 @@ async def handle_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del user_states[user_id]
     
     return ConversationHandler.END
+
+async def accept_application_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик принятия заявки"""
+    query = update.callback_query
+    await query.answer()
+    
+    app_id = int(query.data.split('_')[1])
+    logger.info(f"🔍 Попытка принять заявку #{app_id}")
+    
+    application = db.get_application(app_id)
+    user_id = query.from_user.id
+    
+    if not application:
+        logger.error(f"❌ Заявка #{app_id} не найдена в БД")
+        await query.edit_message_text("❌ Заявка не найдена.")
+        return
+    
+    logger.info(f"✅ Заявка #{app_id} найдена в БД, статус: {application['status']}")
+    
+    success = db.accept_application(
+        app_id, 
+        user_id,
+        query.from_user.username or query.from_user.full_name
+    )
+    
+    if success:
+        logger.info(f"✅ Заявка #{app_id} успешно принята пользователем {user_id}")
+        # Формируем новый текст для сообщения
+        new_text = (
+            f"Заявка #{app_id} ПРИНЯТА\n\n"
+            f"Адрес: {application['address']}\n"
+            f"Задача: {application['task']}\n"
+        )
+        
+        # Добавляем комментарий, если он есть
+        if application['comment'] and application['comment'].strip():
+            new_text += f"Комментарий: {application['comment']}\n"
+        
+        # Добавляем информацию об отправителе и исполнителе
+        new_text += f"От: @{application['username']}\n"
+        new_text += f"Принял: @{query.from_user.username or query.from_user.full_name}"
+        
+        try:
+            # Проверяем, было ли сообщение с фото или текстом
+            if application.get('photo_file_id'):
+                # Если это было сообщение с фото, редактируем caption
+                await query.edit_message_caption(
+                    caption=new_text,
+                    reply_markup=None  # Убираем клавиатуру
+                )
+            else:
+                # Если это было текстовое сообщение, редактируем текст
+                await query.edit_message_text(
+                    text=new_text,
+                    reply_markup=None,  # Убираем клавиатуру
+                    parse_mode=ParseMode.MARKDOWN
+                )
+        except Exception as e:
+            print(f"DEBUG: Ошибка при редактировании сообщения: {e}")
+            # Если не удалось отредактировать, пробуем отправить новое сообщение
+            try:
+                if application.get('photo_file_id'):
+                    await context.bot.send_photo(
+                        chat_id=Config.ADMIN_GROUP_CHAT_ID,
+                        photo=application['photo_file_id'],
+                        caption=new_text,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                else:
+                    await context.bot.send_message(
+                        chat_id=Config.ADMIN_GROUP_CHAT_ID,
+                        text=new_text,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+            except Exception as e2:
+                print(f"DEBUG: Не удалось отправить новое сообщение: {e2}")
+        
+        # Пытаемся отправить данные в личку с кнопками
+        try:
+            # Импортируем клавиатуру управления заявкой
+            from keyboards import get_application_management_keyboard
+            
+            full_info = (
+                f"Вы приняли заявку #{app_id}!\n\n"
+                f"Данные заявки:\n"
+                f"Адрес: {application['address']}\n"
+                f"Телефон: {application['phone']}\n"
+                f"Задача: {application['task']}\n"
+                f"Комментарий: {application['comment'] or 'нет'}\n"
+                f"Отправитель: @{application['username']}\n\n"
+                f"Если по какой-то причине вы не можете выполнить заявку, "
+                f"вы можете вернуть ее в общий чат или закрыть после выполнения."
+            )
+            
+            # Отправляем сообщение в личку с кнопками управления
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=full_info,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_application_management_keyboard(app_id)
+            )
+            
+            # Если есть фото, отправляем его в личку
+            if application.get('photo_file_id'):
+                await context.bot.send_photo(
+                    chat_id=user_id,
+                    photo=application['photo_file_id'],
+                    caption=f"Фото к заявке #{app_id}"
+                )
+            
+            # Сообщение в группе, что данные отправлены
+            await query.message.reply_text(
+                f"{query.from_user.username or query.from_user.full_name}, "
+                f"данные заявки #{app_id} отправлены вам в личные сообщения.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_to_message_id=query.message.message_id
+            )
+            
+        except Exception as e:
+            print(f"DEBUG: Не удалось отправить в личку: {e}")
+            
+            # Создаем ссылку с временным токеном
+            import hashlib
+            import time
+            
+            # Создаем уникальный токен для этой заявки и пользователя
+            token_data = f"{app_id}_{user_id}_{int(time.time())}"
+            token_hash = hashlib.md5(token_data.encode()).hexdigest()[:8]
+            
+            # Сохраняем в контексте временную связку токен-пользователь-заявка
+            if 'app_tokens' not in context.bot_data:
+                context.bot_data['app_tokens'] = {}
+            
+            # Сохраняем на 1 час (3600 секунд)
+            context.bot_data['app_tokens'][token_hash] = {
+                'app_id': app_id,
+                'user_id': user_id,
+                'expires': time.time() + 3600
+            }
+            
+            # Создаем кнопку для начала диалога с ботом
+            start_button = InlineKeyboardButton(
+                "💬 Получить данные заявки", 
+                url=f"https://t.me/{context.bot.username}?start=token_{token_hash}"
+            )
+            keyboard = InlineKeyboardMarkup([[start_button]])
+            
+            reply_msg = await query.message.reply_text(
+                f"{query.from_user.username or query.from_user.full_name}, "
+                f"вы приняли заявку #{app_id}, но у вас нет диалога с ботом.\n\n"
+                f"Чтобы получить данные заявки:\n"
+                f"1. Нажмите кнопку ниже\n"
+                f"2. Напишите `/start` боту\n"
+                f"3. Данные заявки будут отправлены автоматически\n\n"
+                f"⚠️ *Внимание:* Эта ссылка действительна только для вас в течение 1 часа.",
+                reply_markup=keyboard,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_to_message_id=query.message.message_id
+            )
+            
+            # Сохраняем ID сообщения
+            context.bot_data[f'app_{app_id}_message'] = {
+                'message_id': reply_msg.message_id,
+                'chat_id': query.message.chat.id,
+                'user_id': user_id
+            }
+        
+        # Уведомляем создателя заявки
+        if user_id != application['user_id']:
+            try:
+                await context.bot.send_message(
+                    chat_id=application['user_id'],
+                    text=f"✅ Ваша заявка #{app_id} принята!\n"
+                         f"Исполнитель: @{query.from_user.username or query.from_user.full_name}\n\n"
+                         f"Скоро с вами свяжутся для уточнения деталей."
+                )
+            except Exception as e:
+                print(f"DEBUG: Не удалось уведомить создателя: {e}")
+    else:
+        logger.error(f"❌ Не удалось принять заявку #{app_id}")
+        await query.answer("⚠️ Не удалось принять заявку!", show_alert=True)
 
 
 async def handle_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
