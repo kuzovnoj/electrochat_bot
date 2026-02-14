@@ -69,17 +69,59 @@ def main():
     # Создаем фильтр для выбора фото (да/нет)
     photo_choice_filter = filters.Regex(r'^(✅ Да|❌ Нет|да|нет|Да|Нет)$')
     
-    # ВАЖНО: Сначала добавляем самый специфичный обработчик - для JSON от Django
-    # Он должен быть ПЕРВЫМ среди текстовых обработчиков
+    # ВАЖНО: Сначала создаем ConversationHandler
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("new", handlers.new_application),
+            CallbackQueryHandler(handlers.create_application_callback, pattern='^create_application$')
+        ],
+        states={
+            Config.ADDRESS: [
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_address)
+            ],
+            Config.PHONE: [
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_phone)
+            ],
+            Config.TASK: [
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_task)
+            ],
+            Config.COMMENT: [
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_comment)
+            ],
+            Config.PHOTO: [
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),
+                MessageHandler(photo_choice_filter & ~cancel_filter, handlers.handle_photo_choice),
+                MessageHandler(filters.PHOTO, handlers.handle_photo),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter & ~photo_choice_filter, 
+                               lambda u, c: u.message.reply_text(
+                                   "❌ Пожалуйста, нажмите '✅ Да' или '❌ Нет' или отправьте фото",
+                                   reply_markup=handlers.get_photo_choice_keyboard()
+                               ))
+            ],
+        },
+        fallbacks=[
+            CommandHandler("cancel", handlers.handle_cancel_button),
+            MessageHandler(cancel_filter, handlers.handle_cancel_button)
+        ],
+        allow_reentry=True
+    )
+    
+    # ТЕПЕРЬ добавляем обработчики в правильном порядке
+    
+    # 1. Сначала самый специфичный - JSON от Django
     application.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
         handlers.webhook_create_application
     ))
     
-    # Затем добавляем ConversationHandler (он имеет приоритет из-за states)
+    # 2. Затем ConversationHandler
     application.add_handler(conv_handler)
     
-    # Затем добавляем специфичные обработчики по паттернам
+    # 3. Затем обработчики callback-запросов по паттернам
     application.add_handler(CallbackQueryHandler(
         handlers.accept_application_callback, 
         pattern='^accept_'
@@ -95,8 +137,7 @@ def main():
         pattern='^cancel_return_'
     ))
     
-    # ВАЖНО: Этот обработчик должен быть ПОСЛЕ обработчика JSON,
-    # но до общих обработчиков
+    # 4. Затем текстовые обработчики (но после JSON)
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
         handlers.handle_return_reason
@@ -157,14 +198,14 @@ def main():
         pattern='^back_to_menu$'
     ))
 
-    # Базовые команды (они имеют приоритет из-за CommandHandler)
+    # 5. Базовые команды
     application.add_handler(CommandHandler("start", handlers.start))
     application.add_handler(CommandHandler("help", handlers.help_command))
     application.add_handler(CommandHandler("cancel", handlers.handle_cancel_button))
     application.add_handler(CommandHandler("myapps", handlers.show_my_accepted_applications))
     application.add_handler(CommandHandler("myrequests", handlers.show_my_created_applications))
 
-    # Обработчик ошибок
+    # 6. Обработчик ошибок
     application.add_error_handler(handlers.error_handler)
     
     logger.info("✓ Бот запущен...")
