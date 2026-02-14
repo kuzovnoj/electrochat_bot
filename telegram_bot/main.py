@@ -213,10 +213,11 @@ def main():
     # Обработчик ошибок
     application.add_error_handler(handlers.error_handler)
     
-    # Добавьте этот обработчик после других обработчиков
+    # Добавьте этот обработчик после других обработчиков, перед application.run_polling()
+    # Обработчик вебхука для заявок из Django
     application.add_handler(MessageHandler(
-        filters.ChatType.PRIVATE & filters.Regex(r'^{.*}$'),  # JSON сообщения
-        handlers.webhook_application
+        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
+        handlers.webhook_create_application
     ))
     
     logger.info("✓ Бот запущен...")

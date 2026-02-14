@@ -13,17 +13,39 @@ logger = logging.getLogger(__name__)
 # Простое хранилище состояний
 user_states = {}
 
-async def webhook_application(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик вебхука для создания заявки из Django"""
+
+async def webhook_create_application(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик вебхука для создания заявки из Django
+    Ожидает JSON с полями:
+    {
+        "user_id": 0,
+        "username": "Имя клиента",
+        "address": "Адрес",
+        "phone": "Телефон",
+        "task": "Задача",
+        "comment": "Комментарий",
+        "photo_file_id": "file_id" (опционально)
+    }
+    """
     try:
-        # Получаем данные из запроса
-        data = json.loads(update.message.text)
+        # Проверяем, что сообщение в личном чате и содержит JSON
+        if update.effective_chat.type != 'private':
+            return
         
-        logger.info(f"Получена заявка из Django: {data}")
+        # Парсим JSON из сообщения
+        data = json.loads(update.message.text)
+        logger.info(f"📥 Получена заявка из Django: {data}")
+        
+        # Проверяем обязательные поля
+        required_fields = ['address', 'phone', 'task']
+        for field in required_fields:
+            if field not in data:
+                raise KeyError(f"Отсутствует обязательное поле: {field}")
         
         # Создаем объект заявки
         application = Application(
-            user_id=data.get('user_id', 0),  # Для заявок с сайта user_id = 0
+            user_id=data.get('user_id', 0),  # 0 - специальный ID для заявок с сайта
             username=data.get('username', 'Клиент с сайта'),
             address=data['address'],
             phone=data['phone'],
@@ -35,7 +57,7 @@ async def webhook_application(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         # Сохраняем в БД бота
         app_id = db.create_application(application)
-        logger.info(f"Заявка #{app_id} сохранена в БД бота")
+        logger.info(f"✅ Заявка #{app_id} сохранена в БД бота")
         
         # Формируем сообщение для группы
         message_text = (
@@ -46,12 +68,10 @@ async def webhook_application(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"🔧 Задача: {application.task}\n"
         )
         
-        if application.comment:
+        if application.comment and application.comment.strip() and application.comment != '-':
             message_text += f"💬 Комментарий: {application.comment}\n"
         
         message_text += f"👤 От: {application.username}"
-        
-        from keyboards import get_application_keyboard
         
         # Отправляем в группу
         if application.photo_file_id:
@@ -73,15 +93,30 @@ async def webhook_application(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Сохраняем message_id
         db.set_message_id(app_id, sent_message.message_id)
         
-        # Отвечаем Django
+        # Отправляем подтверждение Django
         await update.message.reply_text(json.dumps({
             'status': 'success',
             'app_id': app_id,
-            'message_id': sent_message.message_id
+            'message_id': sent_message.message_id,
+            'django_id': data.get('django_id')  # Возвращаем ID из Django для синхронизации
         }))
         
+        logger.info(f"✅ Заявка #{app_id} успешно отправлена в группу")
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Ошибка парсинга JSON: {e}")
+        await update.message.reply_text(json.dumps({
+            'status': 'error',
+            'error': f'Неверный формат JSON: {str(e)}'
+        }))
+    except KeyError as e:
+        logger.error(f"❌ Отсутствует обязательное поле: {e}")
+        await update.message.reply_text(json.dumps({
+            'status': 'error',
+            'error': f'Отсутствует обязательное поле: {str(e)}'
+        }))
     except Exception as e:
-        logger.error(f"Ошибка при обработке заявки из Django: {e}")
+        logger.error(f"❌ Ошибка при создании заявки: {e}", exc_info=True)
         await update.message.reply_text(json.dumps({
             'status': 'error',
             'error': str(e)
