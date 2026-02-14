@@ -25,11 +25,12 @@ async def webhook_create_application(update: Update, context: ContextTypes.DEFAU
         "phone": "Телефон",
         "task": "Задача",
         "comment": "Комментарий",
-        "photo_file_id": "file_id" (опционально)
+        "photo_file_id": "file_id" (опционально),
+        "django_id": 123 (ID из Django для синхронизации)
     }
     """
     try:
-        # Проверяем, что сообщение в личном чате и содержит JSON
+        # Проверяем, что сообщение в личном чате
         if update.effective_chat.type != 'private':
             return
         
@@ -55,11 +56,11 @@ async def webhook_create_application(update: Update, context: ContextTypes.DEFAU
             status='pending'
         )
         
-        # Сохраняем в БД бота
+        # Сохраняем в БД бота - получаем НОВЫЙ ID
         app_id = db.create_application(application)
-        logger.info(f"✅ Заявка #{app_id} сохранена в БД бота")
+        logger.info(f"✅ Заявка #{app_id} сохранена в БД бота (Django ID: {data.get('django_id')})")
         
-        # Формируем сообщение для группы
+        # Формируем сообщение для группы с НОВЫМ ID из БД бота
         message_text = (
             f"⚠️ ВНИМАНИЕ! Заявка поступила напрямую от клиента!\n\n"
             f"📋 Заявка #{app_id}\n\n"
@@ -73,34 +74,48 @@ async def webhook_create_application(update: Update, context: ContextTypes.DEFAU
         
         message_text += f"👤 От: {application.username}"
         
-        # Отправляем в группу
+        # Добавляем информацию о том, что заявка с сайта
+        if data.get('django_id'):
+            message_text += f"\n🆔 ID в системе сайта: {data['django_id']}"
+        
+        # Отправляем в группу с НОВЫМ ID
         if application.photo_file_id:
             sent_message = await context.bot.send_photo(
                 chat_id=Config.ADMIN_GROUP_CHAT_ID,
                 photo=application.photo_file_id,
                 caption=message_text,
-                reply_markup=get_application_keyboard(app_id),
+                reply_markup=get_application_keyboard(app_id),  # Используем НОВЫЙ ID
                 parse_mode=ParseMode.MARKDOWN
             )
         else:
             sent_message = await context.bot.send_message(
                 chat_id=Config.ADMIN_GROUP_CHAT_ID,
                 text=message_text,
-                reply_markup=get_application_keyboard(app_id),
+                reply_markup=get_application_keyboard(app_id),  # Используем НОВЫЙ ID
                 parse_mode=ParseMode.MARKDOWN
             )
         
         # Сохраняем message_id
         db.set_message_id(app_id, sent_message.message_id)
         
-        # Отправляем подтверждение Django
-        await update.message.reply_text(json.dumps({
-            'status': 'success',
-            'app_id': app_id,
-            'message_id': sent_message.message_id,
-            'django_id': data.get('django_id')  # Возвращаем ID из Django для синхронизации
-        }))
+        # Сохраняем соответствие между ID Django и ID бота (опционально)
+        # Можно создать отдельную таблицу для синхронизации, если нужно
+        if 'django_app_mapping' not in context.bot_data:
+            context.bot_data['django_app_mapping'] = {}
         
+        if data.get('django_id'):
+            context.bot_data['django_app_mapping'][data['django_id']] = app_id
+            logger.info(f"✅ Создано соответствие: Django ID {data['django_id']} -> Bot ID {app_id}")
+        
+        # Отправляем подтверждение Django с НОВЫМ ID
+        response_data = {
+            'status': 'success',
+            'app_id': app_id,  # Новый ID из БД бота
+            'message_id': sent_message.message_id,
+            'django_id': data.get('django_id')  # Возвращаем ID из Django для подтверждения
+        }
+        
+        await update.message.reply_text(json.dumps(response_data, ensure_ascii=False))
         logger.info(f"✅ Заявка #{app_id} успешно отправлена в группу")
         
     except json.JSONDecodeError as e:
