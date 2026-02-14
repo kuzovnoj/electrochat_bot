@@ -115,20 +115,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode=ParseMode.MARKDOWN
                     )
                     
+                    # Если есть фото, отправляем его
+                    if application.get('photo_file_id'):
+                        await context.bot.send_photo(
+                            chat_id=user_id,
+                            photo=application['photo_file_id'],
+                            caption=f"Фото к заявке #{app_data}"
+                        )
+                    
                     # Удаляем использованный токен
                     del context.bot_data['app_tokens'][token_data]
                 
                     # Добавляем кнопку для сохранения контакта
                     contact_keyboard = [
                         [InlineKeyboardButton("📝 Создать свою заявку", callback_data='create_application')],
- #                       [InlineKeyboardButton("📞 Сохранить контакт", callback_data=f'save_contact_{app_data}')]
                     ]
-                    '''
-                    await update.message.reply_text(
-                        "Что вы хотите сделать дальше?",
-                        reply_markup=InlineKeyboardMarkup(contact_keyboard)
-                    )
-                    '''
                     return ConversationHandler.END
         
         # Если пользователь пришел по прямой ссылке с номером заявки
@@ -170,17 +171,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.MARKDOWN
                 )
                 
+                # Если есть фото, отправляем его
+                if application.get('photo_file_id'):
+                    await context.bot.send_photo(
+                        chat_id=user_id,
+                        photo=application['photo_file_id'],
+                        caption=f"Фото к заявке #{app_data}"
+                    )
+                
                 # Добавляем кнопку для сохранения контакта
                 contact_keyboard = [
                     [InlineKeyboardButton("📝 Создать свою заявку", callback_data='create_application')],
-#                    [InlineKeyboardButton("📞 Сохранить контакт", callback_data=f'save_contact_{app_data}')]
                 ]
-                '''
-                await update.message.reply_text(
-                    "Что вы хотите сделать дальше?",
-                    reply_markup=InlineKeyboardMarkup(contact_keyboard)
-                )
-                '''
                 return ConversationHandler.END
         
         
@@ -233,7 +235,7 @@ async def new_application(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Отправляем первый вопрос
     await update.message.reply_text(
         f"Создание новой заявки\n\n"
-        "Шаг 1 из 4: Введите адрес:\n"
+        "Шаг 1 из 5: Введите адрес:\n"
         "(или отправьте '❌ Отмена' для отмены)",
         reply_markup=get_cancel_keyboard(),
         parse_mode=ParseMode.MARKDOWN
@@ -269,7 +271,7 @@ async def create_application_callback(update: Update, context: ContextTypes.DEFA
     # Отправляем первый вопрос
     await query.message.edit_text(
         f"Создание новой заявки\n\n"
-        "Шаг 1 из 4: Введите адрес:\n"
+        "Шаг 1 из 5: Введите адрес:\n"
         "(или отправьте '❌ Отмена' для отмены)",
         parse_mode=ParseMode.MARKDOWN
     )
@@ -283,7 +285,6 @@ async def create_application_callback(update: Update, context: ContextTypes.DEFA
     
     return Config.ADDRESS
 
-# Удаляем старую функцию handle_private_message и заменяем ее на ConversationHandler
 async def handle_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка адреса"""
     user_id = update.effective_user.id
@@ -305,7 +306,7 @@ async def handle_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_states[user_id]['step'] = 'phone'
     
     await update.message.reply_text(
-        "Шаг 2 из 4: Введите номер телефона:\n"
+        "Шаг 2 из 5: Введите номер телефона:\n"
         "(формат: +7XXXXXXXXXX или 8XXXXXXXXXX)\n"
         "(или отправьте '❌ Отмена' для отмены)",
         reply_markup=get_cancel_keyboard(),
@@ -337,7 +338,7 @@ async def handle_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_states[user_id]['step'] = 'task'
     
     await update.message.reply_text(
-        "Шаг 3 из 4: Опишите задачу:\n"
+        "Шаг 3 из 5: Опишите задачу:\n"
         "(подробно опишите, что нужно сделать)\n"
         "(или отправьте '❌ Отмена' для отмены)",
         reply_markup=get_cancel_keyboard(),
@@ -366,7 +367,7 @@ async def handle_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_states[user_id]['step'] = 'comment'
     
     await update.message.reply_text(
-        "Шаг 4 из 4: Введите комментарий:\n"
+        "Шаг 4 из 5: Введите комментарий:\n"
         "(дополнительная информация, особенности и т.д.)\n"
         "(отправьте '-' если комментария нет)\n"
         "(или отправьте '❌ Отмена' для отмены)",
@@ -378,7 +379,7 @@ async def handle_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return Config.COMMENT
 
 async def handle_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка комментария и сохранение заявки"""
+    """Обработка комментария"""
     user_id = update.effective_user.id
     
     if user_id not in user_states:
@@ -394,22 +395,99 @@ async def handle_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Сохраняем комментарий
     comment = text if text != '-' else ""
     user_states[user_id]['comment'] = comment
+    user_states[user_id]['step'] = 'photo_choice'
     
-    # Проверяем, что все данные собраны
-    required_fields = ['address', 'phone', 'task', 'username']
-    if not all(field in user_states[user_id] for field in required_fields):
-        print(f"DEBUG: Не все данные собраны: {user_states[user_id]}")
+    # Спрашиваем, нужно ли добавить фото
+    await update.message.reply_text(
+        "Шаг 5 из 5: Хотите добавить фото к заявке?\n"
+        "(фото поможет исполнителю лучше понять задачу)",
+        reply_markup=get_photo_choice_keyboard(),
+        parse_mode=ParseMode.MARKDOWN
+    )
+    
+    print(f"DEBUG: Перешли к шагу 'photo_choice'")
+    return Config.PHOTO
+
+async def handle_photo_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка выбора - добавлять фото или нет"""
+    user_id = update.effective_user.id
+    
+    if user_id not in user_states:
         await update.message.reply_text(
-            "❌ Ошибка: не все данные собраны. Начните заново.",
+            "❌ Нет активного процесса создания заявки.",
             reply_markup=remove_keyboard()
         )
-        # Очищаем состояние
-        if user_id in user_states:
-            del user_states[user_id]
         return ConversationHandler.END
+    
+    choice = update.message.text.lower()
+    
+    if choice in ['да', '✅ да', 'yes']:
+        # Пользователь хочет добавить фото
+        user_states[user_id]['need_photo'] = True
+        await update.message.reply_text(
+            "📸 Отправьте фото:",
+            reply_markup=get_cancel_keyboard()
+        )
+        return Config.PHOTO  # Остаемся в том же состоянии, но теперь ожидаем фото
+    else:
+        # Пользователь не хочет добавлять фото
+        user_states[user_id]['need_photo'] = False
+        user_states[user_id]['photo_file_id'] = None
+        # Сохраняем заявку без фото
+        return await save_application(update, context)
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка получения фото"""
+    user_id = update.effective_user.id
+    
+    if user_id not in user_states:
+        await update.message.reply_text(
+            "❌ Нет активного процесса создания заявки.",
+            reply_markup=remove_keyboard()
+        )
+        return ConversationHandler.END
+    
+    # Получаем фото
+    if update.message.photo:
+        # Берем фото в максимальном размере (последнее в списке)
+        photo_file_id = update.message.photo[-1].file_id
+        user_states[user_id]['photo_file_id'] = photo_file_id
+        
+        # Подтверждаем получение фото
+        await update.message.reply_text(
+            "✅ Фото получено!",
+            reply_markup=remove_keyboard()
+        )
+        
+        # Сохраняем заявку с фото
+        return await save_application(update, context)
+    else:
+        # Если прислали не фото
+        await update.message.reply_text(
+            "❌ Пожалуйста, отправьте фото или нажмите '❌ Отмена'",
+            reply_markup=get_cancel_keyboard()
+        )
+        return Config.PHOTO
+
+async def save_application(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сохранение заявки"""
+    user_id = update.effective_user.id
     
     try:
         user_data = user_states[user_id]
+        
+        # Проверяем, что все необходимые данные собраны
+        required_fields = ['address', 'phone', 'task', 'username']
+        if not all(field in user_data for field in required_fields):
+            print(f"DEBUG: Не все данные собраны: {user_data}")
+            await update.message.reply_text(
+                "❌ Ошибка: не все данные собраны. Начните заново.",
+                reply_markup=remove_keyboard()
+            )
+            # Очищаем состояние
+            if user_id in user_states:
+                del user_states[user_id]
+            return ConversationHandler.END
         
         # Создаем заявку
         application = Application(
@@ -418,7 +496,8 @@ async def handle_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
             address=user_data['address'],
             phone=user_data['phone'],
             task=user_data['task'],
-            comment=user_data['comment']
+            comment=user_data.get('comment', ''),
+            photo_file_id=user_data.get('photo_file_id')
         )
         
         # Сохраняем в БД
@@ -426,22 +505,20 @@ async def handle_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"DEBUG: Заявка #{app_id} создана")
         
         # Подтверждение пользователю
+        photo_text = "\n📸 Фото приложено" if application.photo_file_id else ""
         await update.message.reply_text(
-            f"Заявка #{app_id} успешно создана!\n\n"
+            f"✅ Заявка #{app_id} успешно создана!\n\n"
             f"Детали заявки:\n"
             f"Адрес: {application.address}\n"
             f"Телефон: {application.phone}\n"
             f"Задача: {application.task}\n"
-            f"Комментарий: {application.comment or 'нет'}\n\n"
+            f"Комментарий: {application.comment or 'нет'}{photo_text}\n\n"
             f"Заявка отправлена в группу исполнителей.",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=remove_keyboard()
         )
         
-        # Создаем кнопку для новой заявки
-        keyboard = [[InlineKeyboardButton("📝 Создать еще одну заявку", callback_data='create_application')]]
-        
-        # Отправляем заявку в группу С КОММЕНТАРИЕМ
+        # Создаем клавиатуру для заявки
         keyboard = get_application_keyboard(app_id)
         
         # Формируем текст с комментарием
@@ -458,14 +535,37 @@ async def handle_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Добавляем информацию об отправителе
         message_text += f"От: @{application.username}"
         
-        sent_message = await context.bot.send_message(
-            chat_id=Config.ADMIN_GROUP_CHAT_ID,
-            text=message_text,
-            reply_markup=keyboard,
-            parse_mode=ParseMode.MARKDOWN
-        )
-        
-        db.set_message_id(app_id, sent_message.message_id)
+        # Отправляем заявку в группу
+        try:
+            if application.photo_file_id:
+                # Если есть фото - отправляем с caption
+                sent_message = await context.bot.send_photo(
+                    chat_id=Config.ADMIN_GROUP_CHAT_ID,
+                    photo=application.photo_file_id,
+                    caption=message_text,
+                    reply_markup=keyboard,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                # Сохраняем информацию, что это сообщение с фото
+                context.bot_data[f'app_{app_id}_has_photo'] = True
+            else:
+                # Если нет фото - отправляем текстовое сообщение
+                sent_message = await context.bot.send_message(
+                    chat_id=Config.ADMIN_GROUP_CHAT_ID,
+                    text=message_text,
+                    reply_markup=keyboard,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                context.bot_data[f'app_{app_id}_has_photo'] = False
+            
+            # Сохраняем ID сообщения в базе данных
+            db.set_message_id(app_id, sent_message.message_id)
+            
+        except Exception as e:
+            print(f"DEBUG: Ошибка при отправке в группу: {e}")
+            await update.message.reply_text(
+                "❌ Ошибка при отправке заявки в группу. Администратор уведомлен."
+            )
                 
     except Exception as e:
         print(f"DEBUG: Ошибка при сохранении заявки: {e}")
@@ -527,7 +627,7 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
     )
     
     if success:
-        # Обновляем сообщение в группе БЕЗ кнопок
+        # Формируем новый текст для сообщения
         new_text = (
             f"Заявка #{app_id} ПРИНЯТА\n\n"
             f"Адрес: {application['address']}\n"
@@ -542,12 +642,40 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
         new_text += f"От: @{application['username']}\n"
         new_text += f"Принял: @{query.from_user.username or query.from_user.full_name}"
         
-        # В ГРУППЕ убираем все кнопки после принятия
-        await query.edit_message_text(
-            text=new_text, 
-            reply_markup=None,  # Убираем клавиатуру в группе
-            parse_mode=ParseMode.MARKDOWN
-        )
+        try:
+            # Проверяем, было ли сообщение с фото или текстом
+            if application.get('photo_file_id'):
+                # Если это было сообщение с фото, редактируем caption
+                await query.edit_message_caption(
+                    caption=new_text,
+                    reply_markup=None  # Убираем клавиатуру
+                )
+            else:
+                # Если это было текстовое сообщение, редактируем текст
+                await query.edit_message_text(
+                    text=new_text,
+                    reply_markup=None,  # Убираем клавиатуру
+                    parse_mode=ParseMode.MARKDOWN
+                )
+        except Exception as e:
+            print(f"DEBUG: Ошибка при редактировании сообщения: {e}")
+            # Если не удалось отредактировать, пробуем отправить новое сообщение
+            try:
+                if application.get('photo_file_id'):
+                    await context.bot.send_photo(
+                        chat_id=Config.ADMIN_GROUP_CHAT_ID,
+                        photo=application['photo_file_id'],
+                        caption=new_text,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                else:
+                    await context.bot.send_message(
+                        chat_id=Config.ADMIN_GROUP_CHAT_ID,
+                        text=new_text,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+            except Exception as e2:
+                print(f"DEBUG: Не удалось отправить новое сообщение: {e2}")
         
         # Пытаемся отправить данные в личку с кнопками
         try:
@@ -574,6 +702,14 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
                 reply_markup=get_application_management_keyboard(app_id)
             )
             
+            # Если есть фото, отправляем его в личку
+            if application.get('photo_file_id'):
+                await context.bot.send_photo(
+                    chat_id=user_id,
+                    photo=application['photo_file_id'],
+                    caption=f"Фото к заявке #{app_id}"
+                )
+            
             # Сообщение в группе, что данные отправлены
             await query.message.reply_text(
                 f"{query.from_user.username or query.from_user.full_name}, "
@@ -585,7 +721,7 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
         except Exception as e:
             print(f"DEBUG: Не удалось отправить в личку: {e}")
             
-            # Создаем ссылку с временным токеном или параметром пользователя
+            # Создаем ссылку с временным токеном
             import hashlib
             import time
             
@@ -644,6 +780,34 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
                 print(f"DEBUG: Не удалось уведомить создателя: {e}")
     else:
         await query.answer("⚠️ Не удалось принять заявку!", show_alert=True)
+
+
+async def handle_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка нажатия кнопки "Отмена" в процессе создания заявки"""
+    user_id = update.effective_user.id
+    text = update.message.text
+    
+    print(f"DEBUG: Кнопка отмены нажата пользователем {user_id}")
+    
+    # Очищаем состояние пользователя
+    if user_id in user_states:
+        del user_states[user_id]
+    
+    await update.message.reply_text(
+        "❌ Создание заявки отменено.",
+        reply_markup=remove_keyboard()
+    )
+    
+    # Создаем кнопку для новой заявки
+    keyboard = [[InlineKeyboardButton("📝 Создать заявку", callback_data='create_application')]]
+    
+    await update.message.reply_text(
+        "Можете создать новую заявку:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    
+    return ConversationHandler.END
+
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда помощи"""
@@ -794,32 +958,6 @@ async def copy_data_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         message,
         parse_mode=ParseMode.MARKDOWN
     )
-
-async def handle_cancel_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка нажатия кнопки "Отмена" в процессе создания заявки"""
-    user_id = update.effective_user.id
-    text = update.message.text
-    
-    print(f"DEBUG: Кнопка отмены нажата пользователем {user_id}")
-    
-    # Очищаем состояние пользователя
-    if user_id in user_states:
-        del user_states[user_id]
-    
-    await update.message.reply_text(
-        "❌ Создание заявки отменено.",
-        reply_markup=remove_keyboard()
-    )
-    
-    # Создаем кнопку для новой заявки
-    keyboard = [[InlineKeyboardButton("📝 Создать заявку", callback_data='create_application')]]
-    
-    await update.message.reply_text(
-        "Можете создать новую заявку:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    
-    return ConversationHandler.END
 
 
 # Глобальные переменные для состояний возврата заявки

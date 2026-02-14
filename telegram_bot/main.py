@@ -5,7 +5,6 @@ from config import Config
 import handlers
 from database import db
 
-
 # Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -67,6 +66,8 @@ def main():
     
     # Создаем фильтр для отмены
     cancel_filter = filters.Regex(r'^(❌ Отмена|отмена|cancel|Отмена)$')
+    # Создаем фильтр для выбора фото (да/нет)
+    photo_choice_filter = filters.Regex(r'^(✅ Да|❌ Нет|да|нет|Да|Нет)$')
     
     # Создаем ConversationHandler для создания заявки
     conv_handler = ConversationHandler(
@@ -90,6 +91,16 @@ def main():
             Config.COMMENT: [
                 MessageHandler(cancel_filter, handlers.handle_cancel_button),
                 MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_comment)
+            ],
+            Config.PHOTO: [
+                MessageHandler(cancel_filter, handlers.handle_cancel_button),
+                MessageHandler(photo_choice_filter & ~cancel_filter, handlers.handle_photo_choice),
+                MessageHandler(filters.PHOTO, handlers.handle_photo),
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter & ~photo_choice_filter, 
+                               lambda u, c: u.message.reply_text(
+                                   "❌ Пожалуйста, нажмите '✅ Да' или '❌ Нет' или отправьте фото",
+                                   reply_markup=handlers.get_photo_choice_keyboard()
+                               ))
             ],
         },
         fallbacks=[
