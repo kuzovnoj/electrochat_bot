@@ -21,23 +21,53 @@ async def webhook_create_application(update: Update, context: ContextTypes.DEFAU
     try:
         # Проверяем, что сообщение в личном чате
         if update.effective_chat.type != 'private':
+            logger.warning("⚠️ Сообщение не из личного чата, игнорируем")
             return
         
+        logger.info("="*60)
+        logger.info("📥 ПОЛУЧЕНО СООБЩЕНИЕ ОТ DJANGO")
+        logger.info(f"👤 От пользователя: {update.effective_user.id}")
+        logger.info(f"📝 Текст сообщения: {update.message.text}")
+        
         # Парсим JSON из сообщения
-        data = json.loads(update.message.text)
-        logger.info(f"📥 Получена заявка из Django: {data}")
+        try:
+            data = json.loads(update.message.text)
+            logger.info(f"📦 Распарсенные данные: {json.dumps(data, ensure_ascii=False, indent=2)}")
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ Ошибка парсинга JSON: {e}")
+            # ВАЖНО: Отправляем ошибку в формате JSON
+            error_response = {
+                'status': 'error',
+                'error': f'Неверный формат JSON: {str(e)}'
+            }
+            await update.message.reply_text(
+                json.dumps(error_response, ensure_ascii=False),
+                parse_mode=None  # Без Markdown
+            )
+            return
         
         # Проверяем обязательные поля
         required_fields = ['address', 'phone', 'task']
-        for field in required_fields:
-            if field not in data:
-                raise KeyError(f"Отсутствует обязательное поле: {field}")
+        missing_fields = [field for field in required_fields if field not in data]
+        if missing_fields:
+            error_msg = f"Отсутствуют обязательные поля: {missing_fields}"
+            logger.error(f"❌ {error_msg}")
+            # ВАЖНО: Отправляем ошибку в формате JSON
+            error_response = {
+                'status': 'error',
+                'error': error_msg
+            }
+            await update.message.reply_text(
+                json.dumps(error_response, ensure_ascii=False),
+                parse_mode=None  # Без Markdown
+            )
+            return
         
-        # Сохраняем django_id для логирования
-        django_id = data.get('django_id', data.get('id', 'неизвестно'))
+        # Получаем данные
+        django_id = data.get('django_id', data.get('id', 'не указан'))
         logger.info(f"📝 Django ID заявки: {django_id}")
         
-        # Создаем объект заявки
+        # Создаем заявку в БД
         application = Application(
             user_id=data.get('user_id', 0),
             username=data.get('username', 'Клиент с сайта'),
@@ -49,21 +79,39 @@ async def webhook_create_application(update: Update, context: ContextTypes.DEFAU
             status='pending'
         )
         
-        # Сохраняем в БД бота - получаем НОВЫЙ ID
+        # Сохраняем в БД
+        logger.info("💾 Сохраняем заявку в БД...")
         bot_app_id = db.create_application(application)
-        logger.info(f"✅ Заявка сохранена в БД бота: Django ID {django_id} -> Bot ID {bot_app_id}")
+        logger.info(f"✅ Заявка сохранена, новый ID в БД бота: {bot_app_id}")
         
-        # ВАЖНО: Проверяем, что заявка действительно создалась с новым ID
+        # Проверяем, что заявка сохранилась
         saved_app = db.get_application(bot_app_id)
         if saved_app:
-            logger.info(f"✅ Проверка: заявка #{bot_app_id} найдена в БД")
+            logger.info(f"✅ Заявка #{bot_app_id} найдена в БД")
         else:
-            logger.error(f"❌ Ошибка: заявка #{bot_app_id} не найдена в БД после создания")
+            logger.error(f"❌ Заявка #{bot_app_id} НЕ найдена в БД!")
         
-        # Формируем сообщение для группы с НОВЫМ ID
+        # Формируем ответ для Django
+        response_data = {
+            'status': 'success',
+            'app_id': bot_app_id,
+            'django_id': django_id,
+            'message': f'Заявка #{bot_app_id} успешно создана'
+        }
+        
+        logger.info(f"📤 Отправляем ответ Django: {json.dumps(response_data, ensure_ascii=False)}")
+        # ВАЖНО: Отправляем как обычный текст, но с JSON содержимым
+        # Не используем parse_mode, чтобы не добавлять Markdown
+        await update.message.reply_text(
+            json.dumps(response_data, ensure_ascii=False),
+            parse_mode=None  # Критически важно!
+        )
+        # Отправляем заявку в группу
+        logger.info("📤 Отправляем заявку в группу...")
+        
         message_text = (
             f"⚠️ ВНИМАНИЕ! Заявка поступила напрямую от клиента!\n\n"
-            f"📋 Заявка #{bot_app_id}\n\n"  # Используем НОВЫЙ ID
+            f"📋 Заявка #{bot_app_id}\n\n"
             f"📍 Адрес: {application.address}\n"
             f"📞 Телефон: {application.phone}\n"
             f"🔧 Задача: {application.task}\n"
@@ -74,60 +122,50 @@ async def webhook_create_application(update: Update, context: ContextTypes.DEFAU
         
         message_text += f"👤 От: {application.username}"
         
-        # Добавляем информацию о Django ID только для информации
-        if django_id and str(django_id) != 'неизвестно':
+        if django_id != 'не указан':
             message_text += f"\n🆔 ID в системе сайта: {django_id}"
         
-        # Отправляем в группу
         if application.photo_file_id:
+            logger.info("📸 Отправка с фото")
             sent_message = await context.bot.send_photo(
                 chat_id=Config.ADMIN_GROUP_CHAT_ID,
                 photo=application.photo_file_id,
                 caption=message_text,
-                reply_markup=get_application_keyboard(bot_app_id),  # Используем НОВЫЙ ID
+                reply_markup=get_application_keyboard(bot_app_id),
                 parse_mode=ParseMode.MARKDOWN
             )
         else:
+            logger.info("📝 Отправка без фото")
             sent_message = await context.bot.send_message(
                 chat_id=Config.ADMIN_GROUP_CHAT_ID,
                 text=message_text,
-                reply_markup=get_application_keyboard(bot_app_id),  # Используем НОВЫЙ ID
+                reply_markup=get_application_keyboard(bot_app_id),
                 parse_mode=ParseMode.MARKDOWN
             )
         
-        # Сохраняем message_id
+        logger.info(f"✅ Заявка отправлена в группу, message_id: {sent_message.message_id}")
         db.set_message_id(bot_app_id, sent_message.message_id)
         
-        # Отправляем подтверждение Django с НОВЫМ ID
-        response_data = {
-            'status': 'success',
-            'app_id': bot_app_id,  # Возвращаем НОВЫЙ ID из бота
-            'message_id': sent_message.message_id,
-            'django_id': django_id
-        }
+        logger.info("="*60)
         
-        await update.message.reply_text(json.dumps(response_data, ensure_ascii=False))
-        logger.info(f"✅ Заявка #{bot_app_id} успешно отправлена в группу")
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"❌ Ошибка парсинга JSON: {e}")
-        await update.message.reply_text(json.dumps({
-            'status': 'error',
-            'error': f'Неверный формат JSON: {str(e)}'
-        }))
-    except KeyError as e:
-        logger.error(f"❌ Отсутствует обязательное поле: {e}")
-        await update.message.reply_text(json.dumps({
-            'status': 'error',
-            'error': f'Отсутствует обязательное поле: {str(e)}'
-        }))
     except Exception as e:
-        logger.error(f"❌ Ошибка при создании заявки: {e}", exc_info=True)
-        await update.message.reply_text(json.dumps({
-            'status': 'error',
-            'error': str(e)
-        }))
-
+        logger.error("="*60)
+        logger.error(f"❌ КРИТИЧЕСКАЯ ОШИБКА: {e}", exc_info=True)
+        logger.error("="*60)
+        
+        # ВАЖНО: Отправляем ошибку в формате JSON
+        try:
+            error_response = {
+                'status': 'error',
+                'error': str(e)
+            }
+            await update.message.reply_text(
+                json.dumps(error_response, ensure_ascii=False),
+                parse_mode=None  # Без Markdown
+            )
+        except:
+            pass
+        
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
