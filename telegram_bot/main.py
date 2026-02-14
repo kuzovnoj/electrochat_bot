@@ -69,112 +69,69 @@ def main():
     # Создаем фильтр для выбора фото (да/нет)
     photo_choice_filter = filters.Regex(r'^(✅ Да|❌ Нет|да|нет|Да|Нет)$')
     
-    # Создаем ConversationHandler для создания заявки
-    conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("new", handlers.new_application),
-            CallbackQueryHandler(handlers.create_application_callback, pattern='^create_application$')
-        ],
-        states={
-            Config.ADDRESS: [
-                MessageHandler(cancel_filter, handlers.handle_cancel_button),
-                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_address)
-            ],
-            Config.PHONE: [
-                MessageHandler(cancel_filter, handlers.handle_cancel_button),
-                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_phone)
-            ],
-            Config.TASK: [
-                MessageHandler(cancel_filter, handlers.handle_cancel_button),
-                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_task)
-            ],
-            Config.COMMENT: [
-                MessageHandler(cancel_filter, handlers.handle_cancel_button),
-                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter, handlers.handle_comment)
-            ],
-            Config.PHOTO: [
-                MessageHandler(cancel_filter, handlers.handle_cancel_button),
-                MessageHandler(photo_choice_filter & ~cancel_filter, handlers.handle_photo_choice),
-                MessageHandler(filters.PHOTO, handlers.handle_photo),
-                MessageHandler(filters.TEXT & ~filters.COMMAND & ~cancel_filter & ~photo_choice_filter, 
-                               lambda u, c: u.message.reply_text(
-                                   "❌ Пожалуйста, нажмите '✅ Да' или '❌ Нет' или отправьте фото",
-                                   reply_markup=handlers.get_photo_choice_keyboard()
-                               ))
-            ],
-        },
-        fallbacks=[
-            CommandHandler("cancel", handlers.handle_cancel_button),
-            MessageHandler(cancel_filter, handlers.handle_cancel_button)
-        ],
-        allow_reentry=True
-    )
+    # ВАЖНО: Сначала добавляем самый специфичный обработчик - для JSON от Django
+    # Он должен быть ПЕРВЫМ среди текстовых обработчиков
+    application.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
+        handlers.webhook_create_application
+    ))
     
-    # Создаем обработчик для возврата заявки (без ConversationHandler, так как это один шаг)
-    # Добавляем ConversationHandler
+    # Затем добавляем ConversationHandler (он имеет приоритет из-за states)
     application.add_handler(conv_handler)
     
-    # Обработчик кнопки "Принять заявку"
+    # Затем добавляем специфичные обработчики по паттернам
     application.add_handler(CallbackQueryHandler(
         handlers.accept_application_callback, 
         pattern='^accept_'
     ))
     
-    # Обработчик кнопки "Вернуть заявку"
     application.add_handler(CallbackQueryHandler(
         handlers.return_application_callback, 
         pattern='^return_app_'
     ))
     
-    # Обработчик кнопки "Отмена возврата"
     application.add_handler(CallbackQueryHandler(
         handlers.cancel_return_callback, 
         pattern='^cancel_return_'
     ))
     
-    # Обработчик для ввода причины возврата (обрабатывает текст после нажатия кнопки возврата)
+    # ВАЖНО: Этот обработчик должен быть ПОСЛЕ обработчика JSON,
+    # но до общих обработчиков
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
         handlers.handle_return_reason
     ))
     
-    # Обработчик кнопки "Сохранить контакт"
     application.add_handler(CallbackQueryHandler(
         handlers.save_contact_callback, 
         pattern='^save_contact_'
     ))
     
-    # Обработчик кнопок копирования данных
     application.add_handler(CallbackQueryHandler(
         handlers.copy_data_callback, 
         pattern='^copy_'
     ))
 
-    # Обработчик кнопки "Закрыть заявку"
     application.add_handler(CallbackQueryHandler(
         handlers.close_application_callback, 
         pattern='^close_app_'
     ))
     
-    # Обработчик кнопки "Работа выполнена"
     application.add_handler(CallbackQueryHandler(
         handlers.handle_close_done_callback, 
         pattern='^close_done_'
     ))
     
-    # Обработчик кнопки "Клиент отказался"
     application.add_handler(CallbackQueryHandler(
         handlers.handle_close_refused_callback, 
         pattern='^close_refused_'
     ))
     
-    # Обработчик кнопки "Отмена закрытия"
     application.add_handler(CallbackQueryHandler(
         handlers.cancel_close_callback, 
         pattern='^cancel_close_'
     ))    
 
-    # Обработчики для новых опций меню
     application.add_handler(CallbackQueryHandler(
         handlers.show_my_accepted_applications,
         pattern='^my_accepted_apps$'
@@ -190,37 +147,25 @@ def main():
         pattern='^show_help$'
     ))
     
-    # Обработчик кнопки "Закрыть" из списка заявок
     application.add_handler(CallbackQueryHandler(
         handlers.handle_close_from_list_callback, 
         pattern='^close_from_list_'
     ))
     
-    # Обработчик кнопки "Назад в меню"
     application.add_handler(CallbackQueryHandler(
         handlers.back_to_menu_callback, 
         pattern='^back_to_menu$'
     ))
 
-    # Добавьте этот обработчик после других обработчиков, перед application.run_polling()
-    # Обработчик вебхука для заявок из Django
-    application.add_handler(MessageHandler(
-        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
-        handlers.webhook_create_application
-    ))
-
-    # Базовые команды
+    # Базовые команды (они имеют приоритет из-за CommandHandler)
     application.add_handler(CommandHandler("start", handlers.start))
     application.add_handler(CommandHandler("help", handlers.help_command))
     application.add_handler(CommandHandler("cancel", handlers.handle_cancel_button))
-    # Также добавим команды для удобства
     application.add_handler(CommandHandler("myapps", handlers.show_my_accepted_applications))
     application.add_handler(CommandHandler("myrequests", handlers.show_my_created_applications))
 
     # Обработчик ошибок
     application.add_error_handler(handlers.error_handler)
-    
-
     
     logger.info("✓ Бот запущен...")
     logger.info("✓ Готов к работе!")
