@@ -4,6 +4,9 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from config import Config
 import handlers
 from database import db
+import threading
+from webhook import run_webhook_server
+
 
 # Настройка логирования
 logging.basicConfig(
@@ -44,7 +47,7 @@ async def post_init(application: Application):
     except Exception as e:
         logger.error(f"✗ Ошибка установки меню: {e}")
 
-def main():
+def run_bot():
     """Запуск бота"""
     if db is None or db.conn is None:
         logger.error("✗ База данных не инициализирована.")
@@ -222,6 +225,16 @@ def main():
         drop_pending_updates=True,
         close_loop=False
     )
+
+def main():
+    """Запуск бота и HTTP-сервера параллельно"""
+    # Запускаем HTTP сервер в отдельном потоке
+    webhook_thread = threading.Thread(target=run_webhook_server, daemon=True)
+    webhook_thread.start()
+    logger.info("✓ HTTP-сервер для вебхуков запущен на порту 7000")
+    
+    # Запускаем бота
+    run_bot()
 
 if __name__ == '__main__':
     main()
