@@ -13,6 +13,8 @@ class Config:
         raise ValueError("DATABASE_URL must be set in .env file")
     
     ADMIN_GROUP_CHAT_ID = int(os.getenv('ADMIN_GROUP_CHAT_ID', -1001234567890))
+
+    API_KEY = os.getenv('BOT_API_KEY', 'your-secret-api-key-here')  #
     
     # States для ConversationHandler
     ADDRESS, PHONE, TASK, COMMENT, PHOTO = range(5)  # Добавили PHOTO
