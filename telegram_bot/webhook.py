@@ -93,7 +93,13 @@ async def receive_application(
         # Сохраняем в БД
         app_id = db.create_application(application)
         logger.info(f"Заявка #{app_id} сохранена в БД")
-        
+
+        # 👇 НОВЫЙ КОД: сохраняем site_order_id
+        site_order_id = data.get('site_user_id')
+        if site_order_id:
+            db.set_site_order_id(app_id, site_order_id)
+            logger.info(f"Заявка #{app_id} связана с заказом на сайте #{site_order_id}")
+            
         # Отправляем в групповой чат
         threading.Thread(
             target=send_to_group_sync,

@@ -6,6 +6,8 @@ from models import Application
 from database import db
 from keyboards import *
 import logging
+from site_api import notify_site_assign
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -615,11 +617,35 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
     app_id = int(query.data.split('_')[1])
     application = db.get_application(app_id)
     user_id = query.from_user.id
+    username = query.from_user.username or query.from_user.full_name
     
     if not application:
         await query.edit_message_text("❌ Заявка не найдена.")
         return
+
+    # Проверяем, не взята ли уже
+    if application['status'] == 'accepted':
+        await query.answer("⚠️ Эту заявку уже кто-то взял!", show_alert=True)
+        return
     
+    # Получаем ID заявки на сайте
+    site_order_id = application.get('site_order_id')
+    if not site_order_id:
+        logger.error(f"Заявка #{app_id} не имеет site_order_id")
+        await query.answer("❌ Ошибка: заявка не связана с сайтом", show_alert=True)
+        return
+
+    # 👇 НОВЫЙ КОД: уведомляем сайт
+    success, error_msg = await notify_site_assign(
+        site_order_id=site_order_id,
+        telegram_user_id=user_id,
+        telegram_username=username
+    )
+    
+    if not success:
+        await query.answer(error_msg, show_alert=True)
+        return
+        
     success = db.accept_application(
         app_id, 
         user_id,

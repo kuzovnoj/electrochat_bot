@@ -16,5 +16,7 @@ class Config:
 
     API_KEY = os.getenv('BOT_API_KEY', 'your-secret-api-key-here')  #
     
+    SITE_DOMAIN = os.getenv('SITE_DOMAIN', 'domain_name')
+
     # States для ConversationHandler
     ADDRESS, PHONE, TASK, COMMENT, PHOTO = range(5)  # Добавили PHOTO

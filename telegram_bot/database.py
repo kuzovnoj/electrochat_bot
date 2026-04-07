@@ -40,88 +40,19 @@ class Database:
         """Обновление структуры существующих таблиц"""
         with self.conn.cursor() as cursor:
             try:
-                # Проверяем существование новых колонок и добавляем их при необходимости
                 cursor.execute("""
                     DO $$
                     BEGIN
-                        -- Проверяем существование колонки photo_file_id
-                        IF NOT EXISTS (
-                            SELECT 1 
-                            FROM information_schema.columns 
-                            WHERE table_name='applications' 
-                            AND column_name='photo_file_id'
-                        ) THEN
-                            ALTER TABLE applications ADD COLUMN photo_file_id VARCHAR(200);
-                        END IF;
+                        -- существующие колонки (уже есть в вашем коде)
                         
-                        -- Проверяем существование колонки return_reason
+                        -- НОВАЯ КОЛОНКА ДЛЯ ХРАНЕНИЯ ID ЗАЯВКИ С САЙТА
                         IF NOT EXISTS (
                             SELECT 1 
                             FROM information_schema.columns 
                             WHERE table_name='applications' 
-                            AND column_name='return_reason'
+                            AND column_name='site_order_id'
                         ) THEN
-                            ALTER TABLE applications ADD COLUMN return_reason TEXT;
-                        END IF;
-                        
-                        -- Проверяем существование колонки returned_by
-                        IF NOT EXISTS (
-                            SELECT 1 
-                            FROM information_schema.columns 
-                            WHERE table_name='applications' 
-                            AND column_name='returned_by'
-                        ) THEN
-                            ALTER TABLE applications ADD COLUMN returned_by BIGINT;
-                        END IF;
-                        
-                        -- Проверяем существование колонки returned_username
-                        IF NOT EXISTS (
-                            SELECT 1 
-                            FROM information_schema.columns 
-                            WHERE table_name='applications' 
-                            AND column_name='returned_username'
-                        ) THEN
-                            ALTER TABLE applications ADD COLUMN returned_username VARCHAR(100);
-                        END IF;
-                        
-                        -- Проверяем существование колонки close_reason
-                        IF NOT EXISTS (
-                            SELECT 1 
-                            FROM information_schema.columns 
-                            WHERE table_name='applications' 
-                            AND column_name='close_reason'
-                        ) THEN
-                            ALTER TABLE applications ADD COLUMN close_reason TEXT;
-                        END IF;
-                        
-                        -- Проверяем существование колонки closed_by
-                        IF NOT EXISTS (
-                            SELECT 1 
-                            FROM information_schema.columns 
-                            WHERE table_name='applications' 
-                            AND column_name='closed_by'
-                        ) THEN
-                            ALTER TABLE applications ADD COLUMN closed_by BIGINT;
-                        END IF;
-                        
-                        -- Проверяем существование колонки closed_username
-                        IF NOT EXISTS (
-                            SELECT 1 
-                            FROM information_schema.columns 
-                            WHERE table_name='applications' 
-                            AND column_name='closed_username'
-                        ) THEN
-                            ALTER TABLE applications ADD COLUMN closed_username VARCHAR(100);
-                        END IF;
-                        
-                        -- Проверяем существование колонки closed_at
-                        IF NOT EXISTS (
-                            SELECT 1 
-                            FROM information_schema.columns 
-                            WHERE table_name='applications' 
-                            AND column_name='closed_at'
-                        ) THEN
-                            ALTER TABLE applications ADD COLUMN closed_at TIMESTAMP;
+                            ALTER TABLE applications ADD COLUMN site_order_id INTEGER;
                         END IF;
                     END $$;
                 """)
@@ -129,8 +60,8 @@ class Database:
                 print("Таблица 'applications' успешно обновлена")
             except Exception as e:
                 print(f"Ошибка при обновлении таблицы: {e}")
-                self.conn.rollback()
-    
+                self.conn.rollback()    
+
     def create_application(self, application):
         with self.conn.cursor() as cursor:
             cursor.execute("""
@@ -255,5 +186,23 @@ class Database:
             """, (user_id,))
             return cursor.fetchall()
 
+    def set_site_order_id(self, app_id, site_order_id):
+        """Сохранить ID заявки с сайта"""
+        with self.conn.cursor() as cursor:
+            cursor.execute("""
+                UPDATE applications 
+                SET site_order_id = %s 
+                WHERE id = %s
+            """, (site_order_id, app_id))
+            self.conn.commit()
+
+    def get_application_by_site_order_id(self, site_order_id):
+        """Получить заявку по ID с сайта"""
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT * FROM applications 
+                WHERE site_order_id = %s
+            """, (site_order_id,))
+            return cursor.fetchone()
 
 db = Database()
