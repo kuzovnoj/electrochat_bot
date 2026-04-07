@@ -31,6 +31,7 @@ class Database:
                     closed_username VARCHAR(100),
                     closed_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    site_order_id INTEGER,
                     message_id INTEGER
                 )
             """)

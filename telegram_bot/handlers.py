@@ -630,21 +630,20 @@ async def accept_application_callback(update: Update, context: ContextTypes.DEFA
     
     # Получаем ID заявки на сайте
     site_order_id = application.get('site_order_id')
-    if not site_order_id:
-        logger.error(f"Заявка #{app_id} не имеет site_order_id")
-        await query.answer("❌ Ошибка: заявка не связана с сайтом", show_alert=True)
-        return
-
-    # 👇 НОВЫЙ КОД: уведомляем сайт
-    success, error_msg = await notify_site_assign(
-        site_order_id=site_order_id,
-        telegram_user_id=user_id,
-        telegram_username=username
-    )
-    
-    if not success:
-        await query.answer(error_msg, show_alert=True)
-        return
+    if site_order_id:
+        # Заявка с сайта — уведомляем сайт
+        success, error_msg = await notify_site_assign(
+            site_order_id=site_order_id,
+            telegram_user_id=user_id,
+            telegram_username=username
+        )
+        
+        if not success:
+            await query.answer(error_msg, show_alert=True)
+            return
+    else:
+        # Заявка из бота — не синхронизируем с сайтом
+        logger.info(f"Заявка #{app_id} создана в боте, site_order_id отсутствует")
         
     success = db.accept_application(
         app_id, 
