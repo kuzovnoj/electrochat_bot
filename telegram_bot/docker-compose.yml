@@ -40,22 +40,6 @@ services:
     networks:
       - bot-network
 
-  # Опционально: контейнер для отладки
-  telegram-bot-debug:
-    build: .
-    container_name: telegram_bot_debug
-    restart: "no"
-    depends_on:
-      - postgres
-    environment:
-      - BOT_TOKEN=${BOT_TOKEN}
-      - ADMIN_GROUP_CHAT_ID=${ADMIN_GROUP_CHAT_ID}
-    volumes:
-      - .:/app
-    command: ["debug"]
-    networks:
-      - bot-network
-
 volumes:
   postgres_data:
     driver: local
