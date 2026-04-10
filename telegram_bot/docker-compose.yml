@@ -14,8 +14,9 @@ services:
       - "127.0.0.1:5432:5432"
     networks:
       - bot-network
+    # Без -d pg_isready по умолчанию лезет в БД с именем пользователя → "telegram_user" не существует
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-telegram_user}"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 10s
       timeout: 5s
       retries: 5

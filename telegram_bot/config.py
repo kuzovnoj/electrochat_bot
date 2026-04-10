@@ -26,7 +26,7 @@ class Config:
     # В Docker 127.0.0.1 — это контейнер; прокси на хосте: socks5://host.docker.internal:1080
     # (в docker-compose ниже добавлен extra_hosts для host.docker.internal).
     _proxy = os.getenv("PROXY_URL", "").strip()
-    PROXY_URL = _proxy if _proxy else None
+    #PROXY_URL = _proxy if _proxy else None
 
 
 def telegram_http_request():
