@@ -24,12 +24,15 @@ services:
     build: .
     container_name: telegram_bot
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - ADMIN_GROUP_CHAT_ID=${ADMIN_GROUP_CHAT_ID}
+      - PROXY_URL=${PROXY_URL:-}
     volumes:
       - .:/app
     command: ["bot"]

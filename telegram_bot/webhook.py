@@ -11,7 +11,7 @@ import os
 from database import db
 from models import Application
 from telegram import Bot, InputFile
-from config import Config
+from config import Config, telegram_http_request
 from keyboards import get_application_keyboard
 import logging
 import aiofiles
@@ -138,7 +138,7 @@ async def save_base64_photo(base64_string: str) -> str:
             tmp_path = tmp_file.name
         
         # Отправляем фото в Telegram (как временный файл)
-        bot = Bot(token=Config.BOT_TOKEN)
+        bot = Bot(token=Config.BOT_TOKEN, request=telegram_http_request())
         
         # Отправляем фото в специальный чат для получения file_id
         # Можно отправить в любой чат, но лучше создать отдельный для хранения фото
@@ -175,7 +175,7 @@ def send_to_group_sync(app_id: int, application: Application, photo_file_id: Opt
 
 async def send_to_group(app_id: int, application: Application, photo_file_id: Optional[str] = None):
     """Отправка заявки в групповой чат"""
-    bot = Bot(token=Config.BOT_TOKEN)
+    bot = Bot(token=Config.BOT_TOKEN, request=telegram_http_request())
     
     # Формируем текст заявки
     message_text = (

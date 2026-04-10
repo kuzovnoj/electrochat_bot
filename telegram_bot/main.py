@@ -54,15 +54,20 @@ def run_bot():
         return
     
     try:
-        # Создаем приложение
-        application = (Application.builder()
+        builder = (
+            Application.builder()
             .token(Config.BOT_TOKEN)
             .pool_timeout(30)
             .connect_timeout(30)
             .read_timeout(30)
             .write_timeout(30)
             .post_init(post_init)
-            .build())
+        )
+        if Config.PROXY_URL:
+            # И API-запросы, и long polling (getUpdates) должны идти через один прокси.
+            builder = builder.proxy(Config.PROXY_URL).get_updates_proxy(Config.PROXY_URL)
+            logger.info("Используется PROXY_URL для Telegram API")
+        application = builder.build()
     except Exception as e:
         logger.error(f"✗ Ошибка: {e}")
         return
