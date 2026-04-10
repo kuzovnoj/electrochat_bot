@@ -38,6 +38,18 @@ services:
     networks:
       - bot-network
 
+  telemt:
+    image: whn0thacked/telemt-docker:latest
+    container_name: telemt
+    restart: unless-stopped
+    volumes:
+      - ./telemt.toml:/etc/telemt.toml:ro
+    ports:
+      - "443:443/tcp"
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+
 volumes:
   postgres_data:
     driver: local

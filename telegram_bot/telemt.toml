@@ -1,0 +1,20 @@
+show_link = ["user1"]
+
+[general]
+prefer_ipv6 = false
+fast_mode = true
+
+[general.modes]
+tls = true
+
+[server]
+port = 443
+listen_addr_ipv4 = "0.0.0.0"
+
+[censorship]
+tls_domain = "ya.ru"          # Домен для маскировки (рабочий HTTPS сайт)
+mask = true                   # Включает проксирование реального сайта
+mask_port = 443
+
+[access.users]
+user1 = "d201c3773938721dd74cca8413686e4d"

@@ -20,3 +20,5 @@ class Config:
 
     # States для ConversationHandler
     ADDRESS, PHONE, TASK, COMMENT, PHOTO = range(5)  # Добавили PHOTO
+
+    PROXY_URL = "socks5://127.0.0.1:1080"  # если используете SOCKS5 прослойку
