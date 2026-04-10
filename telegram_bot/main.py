@@ -67,6 +67,8 @@ def run_bot():
             # И API-запросы, и long polling (getUpdates) должны идти через один прокси.
             builder = builder.proxy(Config.PROXY_URL).get_updates_proxy(Config.PROXY_URL)
             logger.info("Используется PROXY_URL для Telegram API")
+        else:
+            logger.info("Telegram API: прямое подключение (PROXY_URL не задан)")
         application = builder.build()
     except Exception as e:
         logger.error(f"✗ Ошибка: {e}")

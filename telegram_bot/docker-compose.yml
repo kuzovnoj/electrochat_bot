@@ -33,7 +33,6 @@ services:
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - ADMIN_GROUP_CHAT_ID=${ADMIN_GROUP_CHAT_ID}
-      - PROXY_URL=${PROXY_URL:-}
     volumes:
       - .:/app
     command: ["bot"]
