@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y \
     netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
+# Предпочитать IPv4 при dual-stack (меньше сбоев, если IPv6 до цели недоступен)
+RUN printf '\n# elbot: prefer IPv4 for getaddrinfo\nprecedence ::ffff:0:0/96  100\n' >> /etc/gai.conf
+
 # Копирование requirements.txt
 COPY requirements.txt .
 

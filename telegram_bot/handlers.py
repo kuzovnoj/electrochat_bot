@@ -1,4 +1,5 @@
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
+from telegram.error import NetworkError, TimedOut
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.constants import ParseMode
 from config import Config
@@ -878,11 +879,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик ошибок"""
-    logger.error(f"Ошибка: {context.error}", exc_info=True)
-    try:
-        await update.effective_message.reply_text("⚠️ Произошла ошибка.")
-    except:
-        pass
+    err = context.error
+    transient = isinstance(err, (TimedOut, NetworkError))
+    if transient:
+        logger.warning("Сетевая ошибка Telegram: %s", err)
+    else:
+        logger.error("Ошибка: %s", err, exc_info=True)
+    if not transient and update and update.effective_message:
+        try:
+            await update.effective_message.reply_text("⚠️ Произошла ошибка.")
+        except Exception:
+            pass
 
 
 async def save_contact_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

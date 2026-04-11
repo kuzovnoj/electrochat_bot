@@ -57,10 +57,14 @@ def run_bot():
         builder = (
             Application.builder()
             .token(Config.BOT_TOKEN)
-            .pool_timeout(30)
-            .connect_timeout(30)
-            .read_timeout(30)
-            .write_timeout(30)
+            .pool_timeout(Config.TG_POOL_TIMEOUT)
+            .connect_timeout(Config.TG_CONNECT_TIMEOUT)
+            .read_timeout(Config.TG_READ_TIMEOUT)
+            .write_timeout(Config.TG_WRITE_TIMEOUT)
+            .get_updates_connect_timeout(Config.TG_GET_UPDATES_CONNECT_TIMEOUT)
+            .get_updates_read_timeout(Config.TG_GET_UPDATES_READ_TIMEOUT)
+            .get_updates_write_timeout(Config.TG_GET_UPDATES_WRITE_TIMEOUT)
+            .get_updates_pool_timeout(Config.TG_GET_UPDATES_POOL_TIMEOUT)
             .post_init(post_init)
         )
         if Config.PROXY_URL:
@@ -230,7 +234,9 @@ def run_bot():
     application.run_polling(
         allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,
-        close_loop=False
+        close_loop=False,
+        timeout=Config.TG_LONG_POLL_TIMEOUT,
+        bootstrap_retries=Config.TG_BOOTSTRAP_RETRIES,
     )
 
 def main():
