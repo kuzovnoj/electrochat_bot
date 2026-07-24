@@ -1,0 +1,19 @@
+services:
+  telegram-bot:
+    build: .
+    container_name: telegram_bot
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_GROUP_CHAT_ID=${ADMIN_GROUP_CHAT_ID}
+    volumes:
+      - .:/app
+    command: ["bot"]
+    ports:
+      - "7000:7000"
+    networks:
+      - shared_net
+
+networks:
+  shared_net:
+    external: true
